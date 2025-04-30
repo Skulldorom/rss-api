@@ -3,26 +3,49 @@ from flask import Flask, jsonify
 import requests
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
+
+FRESHRSS_HOST = os.environ["FRESHRSS_HOST"]
+FRESHRSS_USERNAME = os.environ["FRESHRSS_USERNAME"]
+FRESHRSS_PASSWORD = os.environ["FRESHRSS_PASSWORD"]
 
 app = Flask(__name__)
 
-FRESHRSS_URL = os.environ["FRESHRSS_URL"]
-FRESHRSS_USER = os.environ["FRESHRSS_USER"]
-FRESHRSS_PASS = os.environ["FRESHRSS_PASS"]
+AUTH_TOKEN = None
+
+
+def get_greader_token():
+    global AUTH_TOKEN
+    if AUTH_TOKEN:
+        return AUTH_TOKEN
+    login_url = f"{FRESHRSS_HOST}/api/greader.php/accounts/ClientLogin"
+    payload = {
+        "Email": FRESHRSS_USERNAME,
+        "Passwd": FRESHRSS_PASSWORD,
+    }
+    res = requests.post(login_url, data=payload)
+    if res.status_code != 200:
+        raise Exception("FreshRSS login failed: {}".format(res.text))
+    # Find and extract 'Auth=' line
+    for line in res.text.splitlines():
+        if line.startswith("Auth="):
+            AUTH_TOKEN = line.replace("Auth=", "").strip()
+            return AUTH_TOKEN
+    raise Exception("Auth token not found in FreshRSS response")
 
 
 @app.route("/freshrss/unread")
 def freshrss_unread():
-    params = {"xt": "user/-/state/com.google/read", "output": "json", "n": 10}
-    auth = (FRESHRSS_USER, FRESHRSS_PASS)
-    r = requests.get(
-        FRESHRSS_URL
-        + "/api/greader.php/reader/api/0/stream/contents/user/-/state/com.google/reading-list",
-        params=params,
-        auth=auth,
-    )  # HTTP Basic Auth
+    token = get_greader_token()
+    headers = {"Authorization": f"GoogleLogin auth={token}"}
+    params = {
+        "xt": "user/-/state/com.google/read",
+        "output": "json",
+        "n": 10,
+    }
+    # Using the same host as before but with the right endpoint
+    url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/user/-/state/com.google/reading-list"
+    r = requests.get(url, headers=headers, params=params)
     r.raise_for_status()
     raw = r.json()
     items = []
