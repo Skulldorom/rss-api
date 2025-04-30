@@ -2,6 +2,8 @@ import os
 from flask import Flask, jsonify
 import requests
 from dotenv import load_dotenv
+import humanize
+from datetime import datetime
 
 load_dotenv()
 
@@ -49,13 +51,23 @@ def freshrss_unread():
     r.raise_for_status()
     raw = r.json()
     items = []
+
+    now = datetime.utcnow()
+
     for entry in raw.get("items", []):
+        # Inside your loop
+        published_ts = entry.get("published")
+        # Convert to datetime
+        published_dt = datetime.fromtimestamp(published_ts, datetime.timezone.utc)
+        # Get a relative, human-friendly string (e.g., '14 hr')
+        published_str = humanize.naturaltime(now - published_dt)
         items.append(
             {
                 "title": entry.get("title"),
                 "feed": entry.get("origin", {}).get("title"),
                 "published": entry.get("published"),
                 "url": entry.get("alternate", [{}])[0].get("href", ""),
+                "display": f"{entry.get('title')} ・{published_str}",
             }
         )
     return jsonify(items)
