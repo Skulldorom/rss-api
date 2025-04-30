@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 FRESHRSS_HOST = os.environ["FRESHRSS_HOST"]
-FRESHRSS_USERNAME = os.environ["FRESHRSS_USERNAME"]
-FRESHRSS_PASSWORD = os.environ["FRESHRSS_PASSWORD"]
+FRESHRSS_USERNAME = os.environ["FRESHRSS_USER"]
+FRESHRSS_PASSWORD = os.environ["FRESHRSS_PASS"]
 
 app = Flask(__name__)
 
