@@ -52,7 +52,7 @@ def freshrss_unread():
     raw = r.json()
     items = []
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for entry in raw.get("items", []):
         published_ts = entry.get("published")
