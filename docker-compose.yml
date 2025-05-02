@@ -4,8 +4,8 @@ services:
     build: .
     ports:
       - "5000:5000"
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     restart: unless-stopped
