@@ -8,3 +8,4 @@ services:
       - .env
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
+    restart: unless-stopped
