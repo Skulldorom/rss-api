@@ -34,7 +34,7 @@ docker compose up --build -d
 
 ### How to update
 
-go the location where you rna git clone, `cd rss-api`
+go the location where you ran git clone, `cd rss-api`
 
 ```
 docker compose down
