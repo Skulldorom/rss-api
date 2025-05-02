@@ -5,7 +5,10 @@ from dotenv import load_dotenv
 import humanize
 from datetime import datetime, timezone
 
-load_dotenv()
+try:
+    load_dotenv()
+except:
+    print("No data loaded from .env file")
 
 FRESHRSS_HOST = os.environ["FRESHRSS_HOST"]
 FRESHRSS_USERNAME = os.environ["FRESHRSS_USER"]
