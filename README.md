@@ -1,6 +1,6 @@
 # rss-api
 
-Simple API to fetch rss feeds for github releases, deplyoed using docker
+Simple API to fetch rss feeds for github releases, deployed using docker
 
 You can configure environment variables directly in `docker-compose.yml` instead of using a `.env` file. Default values are provided, but you can override them as needed:
 
