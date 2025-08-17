@@ -1,9 +1,9 @@
 FROM python:3
 WORKDIR /app
 COPY app.py .
-RUN pip install flask
-RUN pip install requests
-RUN pip install python-dotenv
-RUN pip install humanize
-RUN pip install datetime
+COPY pyproject.toml uv.lock ./
+# Install uv
+RUN pip install uv
+# Install dependencies using uv
+RUN uv pip install --system --requirement pyproject.toml --requirement uv.lock
 CMD ["python", "app.py"]

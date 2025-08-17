@@ -2,43 +2,35 @@
 
 Simple API to fetch rss feeds for github releases, deplyoed using docker
 
-```
-git clone https://github.com/Skulldorom/rss-api.git
-cd rss-api
-```
-
-Create a `.env` file in the root directory and add the following variables:
+You can configure environment variables directly in `docker-compose.yml` instead of using a `.env` file. Default values are provided, but you can override them as needed:
 
 ```
-# Base Url of fresh rss
-FRESHRSS_HOST=http://localhost:8020
-# Username
-FRESHRSS_USER=
-# API password 
-FRESHRSS_PASS=
+environment:
+	FRESHRSS_HOST: "http://localhost:8020"  # Default host
+	FRESHRSS_USER: "user"                   # Default username
+	FRESHRSS_PASS: "password"               # Default password
 ```
 
-### Build the Docker image
+Edit these values in your `docker-compose.yml` to match your setup.
 
-To test
+## Running with Docker Compose
 
-```
-docker compose up --build
+You can run the API using the pre-built image from GitHub Container Registry:
+
+```bash
+docker-compose up
 ```
 
-### Final build
+This uses the image `ghcr.io/skulldorom/rss-api:latest`.
 
-```
-docker compose up --build -d
-```
+If you want to build locally, update `docker-compose.yml` to use `build: .` instead of the `image:` field.
 
 ### How to update
 
-go the location where you ran git clone, `cd rss-api`
+Go to the location where you ran git clone, `cd rss-api`
 
 ```
 docker compose down
 git pull origin main
 docker compose up --build -d
 ```
-
