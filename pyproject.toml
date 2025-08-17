@@ -1,0 +1,17 @@
+[project]
+name = "rss-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datetime>=5.5",
+    "flask>=3.1.1",
+    "humanize>=4.12.3",
+    "requests>=2.32.4",
+]
+
+[dependency-groups]
+dev = [
+    "python-dotenv>=1.1.1",
+]
