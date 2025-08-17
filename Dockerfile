@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Copy only dependency manifest and install dependencies
 COPY pyproject.toml ./
-RUN uv pip install -r pyproject.toml
+RUN uv pip install --system -r pyproject.toml
 
 # Copy rest of the application code
 COPY . .
@@ -16,6 +16,9 @@ EXPOSE 5000
 
 # Set environment variable for Flask
 ENV FLASK_RUN_HOST=0.0.0.0
+
+# Optionally, specify your main module if not named app.py:
+# ENV FLASK_APP=your_module:app
 
 # Start Flask app
 CMD ["flask", "run"]
