@@ -1,18 +1,35 @@
 import os
 from flask import Flask, jsonify
 import requests
-from dotenv import load_dotenv
 import humanize
 from datetime import datetime, timezone
 
-try:
-    load_dotenv()
-except:
-    print("No data loaded from .env file")
+# Only load .env in development
+if os.environ.get("FLASK_ENV", "production") == "development":
+    try:
+        from dotenv import load_dotenv
 
-FRESHRSS_HOST = os.environ["FRESHRSS_HOST"]
-FRESHRSS_USERNAME = os.environ["FRESHRSS_USER"]
-FRESHRSS_PASSWORD = os.environ["FRESHRSS_PASS"]
+        load_dotenv()
+    except Exception:
+        print("No data loaded from .env file")
+
+
+def get_env_var(key, default=None):
+    value = os.environ.get(key)
+    if value is None and os.environ.get("FLASK_ENV", "production") == "development":
+        # fallback for dev if not loaded
+        try:
+            from dotenv import dotenv_values
+
+            value = dotenv_values().get(key, default)
+        except Exception:
+            value = default
+    return value if value is not None else default
+
+
+FRESHRSS_HOST = get_env_var("FRESHRSS_HOST")
+FRESHRSS_USERNAME = get_env_var("FRESHRSS_USER")
+FRESHRSS_PASSWORD = get_env_var("FRESHRSS_PASS")
 
 app = Flask(__name__)
 
