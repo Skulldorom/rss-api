@@ -3,5 +3,5 @@ WORKDIR /app
 COPY app.py .
 COPY pyproject.toml uv.lock ./
 RUN pip install uv
-RUN uv pip install --system --all
+RUN uv pip install --system --group root
 CMD ["python", "app.py"]
