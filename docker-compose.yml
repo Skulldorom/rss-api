@@ -6,6 +6,6 @@ services:
       - "5000:5000"
     environment:
       FRESHRSS_HOST: "http://localhost:8020"
-      FRESHRSS_USER: "user"
-      FRESHRSS_PASS: "password"
+      FRESHRSS_USER: "${FRESHRSS_USER}"
+      FRESHRSS_PASS: "${FRESHRSS_PASS}"
     restart: unless-stopped
