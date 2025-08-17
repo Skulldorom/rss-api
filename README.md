@@ -1,6 +1,29 @@
 # rss-api
 
-Simple API to fetch rss feeds for github releases, deplyoed using docker
+Simple API to fetch rss feeds for github releases, deployed using docker
+
+![alt text](example/image.png)
+
+This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
+
+Example of services.yaml:
+
+```
+- Updates:
+            icon: github.png
+            href: http://192.168.0.11:5000
+            siteMonitor: http://192.168.0.11:5000/freshrss/unread
+            widget:
+              type: customapi
+              name: Unread RSS
+              url: http://192.168.0.11:5000/freshrss/unread
+              display: dynamic-list
+              mappings:
+                name: feed
+                label: display
+```
+
+# Docker
 
 You can configure environment variables directly in `docker-compose.yml` instead of using a `.env` file. Default values are provided, but you can override them as needed:
 
