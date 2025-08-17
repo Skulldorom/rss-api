@@ -18,18 +18,25 @@ jobs:
 
       - name: Set image tag
         id: meta
-        run: echo "image_tag=character-battler:${GITHUB_SHA}" >> $GITHUB_OUTPUT
+        run: echo "image_tag=rss-api:${GITHUB_SHA}" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
-        run: docker build -t character-battler:${GITHUB_SHA} .
+        run: docker build -t rss-api:${GITHUB_SHA} .
 
       - name: Run container in background for testing
-        run: docker run -d -p 8080:8080 --name test-server character-battler:${GITHUB_SHA}
+        run: |
+          docker run -d \
+            -p 5000:5000 \
+            --name test-server \
+            -e FRESHRSS_HOST="http://localhost:8020" \
+            -e FRESHRSS_USER="user" \
+            -e FRESHRSS_PASS="password" \
+            rss-api:${GITHUB_SHA}
 
       - name: Wait for server to start
         run: |
           for i in {1..10}; do
-            curl --fail http://localhost:8080 && exit 0
+            curl --fail http://localhost:5000 && exit 0
             sleep 2
           done
           docker logs test-server
@@ -49,7 +56,7 @@ jobs:
         run: echo "REPO_OWNER_LC=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
 
       - name: Build Docker image
-        run: docker build -t character-battler:${GITHUB_SHA} .
+        run: docker build -t rss-api:${GITHUB_SHA} .
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -60,10 +67,10 @@ jobs:
 
       - name: Tag image for GHCR
         run: |
-          docker tag character-battler:${GITHUB_SHA} ghcr.io/${REPO_OWNER_LC}/character-battler:${GITHUB_SHA}
-          docker tag character-battler:${GITHUB_SHA} ghcr.io/${REPO_OWNER_LC}/character-battler:latest
+          docker tag rss-api:${GITHUB_SHA} ghcr.io/${REPO_OWNER_LC}/rss-api:${GITHUB_SHA}
+          docker tag rss-api:${GITHUB_SHA} ghcr.io/${REPO_OWNER_LC}/rss-api:latest
 
       - name: Push image to GHCR
         run: |
-          docker push ghcr.io/${REPO_OWNER_LC}/character-battler:${GITHUB_SHA}
-          docker push ghcr.io/${REPO_OWNER_LC}/character-battler:latest
+          docker push ghcr.io/${REPO_OWNER_LC}/rss-api:${GITHUB_SHA}
+          docker push ghcr.io/${REPO_OWNER_LC}/rss-api:latest
