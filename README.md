@@ -6,9 +6,8 @@ You can configure environment variables directly in `docker-compose.yml` instead
 
 ```
 environment:
-	FRESHRSS_HOST: "http://localhost:8020"  # Default host
-	FRESHRSS_USER: "user"                   # Default username
-	FRESHRSS_PASS: "password"               # Default password
+	FRESHRSS_USER: "user"
+	FRESHRSS_PASS: "password"
 ```
 
 Edit these values in your `docker-compose.yml` to match your setup.
@@ -32,5 +31,5 @@ Go to the location where you ran git clone, `cd rss-api`
 ```
 docker compose down
 git pull origin main
-docker compose up --build -d
+docker compose up -d
 ```
