@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Copy only dependency manifest and install dependencies
 COPY pyproject.toml ./
-RUN uv venv && uv pip install -r pyproject.toml
+RUN uv pip install --system -r pyproject.toml
 
 # Copy rest of the application code
 COPY . .
