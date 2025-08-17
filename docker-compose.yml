@@ -2,6 +2,7 @@ version: "3"
 services:
   custom-api:
     image: ghcr.io/skulldorom/rss-api:latest
+    container_name: rss-api
     ports:
       - "5000:5000"
     environment:
