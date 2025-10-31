@@ -1,0 +1,90 @@
+# Git and version control
+.git/
+.gitignore
+.github/
+
+# Documentation and development files
+README.md
+LICENSE
+*.md
+docs/
+example/
+
+# Python development files
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing and coverage
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pytest_cache/
+coverage.xml
+*.cover
+
+# Logs
+*.log
+
+# Lock files (optional - you might want to keep uv.lock)
+# uv.lock
+
+# Docker files (don't copy Docker files into the image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Secrets and configuration
+*.key
+*.pem
+*.crt
+secrets/
+config/local*
+
+# Development dependencies
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Backup files
+*.bak
+*.backup

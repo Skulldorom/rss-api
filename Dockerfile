@@ -1,4 +1,5 @@
-FROM python:3.12-slim
+# Multi-stage build for security and efficiency
+FROM python:3.12-slim AS builder
 
 # Install uv (the package manager)
 RUN pip install --upgrade pip && pip install uv
@@ -9,16 +10,32 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN uv pip install --system -r pyproject.toml
 
-# Copy rest of the application code
-COPY . .
+# Production stage
+FROM python:3.12-slim AS production
+
+# Create a non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Copy Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+WORKDIR /app
+
+# Copy only the necessary application files
+COPY app.py ./
+
+# Change ownership to non-root user
+RUN chown -R appuser:appuser /app
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 5000
 
 # Set environment variable for Flask
 ENV FLASK_RUN_HOST=0.0.0.0
-
-# Optionally, specify your main module if not named app.py:
-# ENV FLASK_APP=your_module:app
+ENV FLASK_APP=app.py
 
 # Start Flask app
 CMD ["flask", "run"]
