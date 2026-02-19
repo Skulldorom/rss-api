@@ -23,7 +23,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 WORKDIR /app
 
 # Copy only the necessary application files
-COPY app.py ./
+COPY main.py ./
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
@@ -34,4 +34,4 @@ USER appuser
 EXPOSE 5000
 
 # Start FastAPI app with uvicorn
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
