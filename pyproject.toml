@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "datetime>=5.5",
-    "flask>=3.1.1",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
     "humanize>=4.12.3",
     "requests>=2.32.4",
 ]

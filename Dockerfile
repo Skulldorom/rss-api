@@ -33,9 +33,5 @@ USER appuser
 
 EXPOSE 5000
 
-# Set environment variable for Flask
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_APP=app.py
-
-# Start Flask app
-CMD ["flask", "run"]
+# Start FastAPI app with uvicorn
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
