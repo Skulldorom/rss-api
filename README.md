@@ -1,10 +1,20 @@
 # rss-api
 
-Simple API to fetch rss feeds for github releases using fresh rss
+Simple API to fetch rss feeds for github releases using fresh rss (powered by FastAPI)
 
 ![alt text](example/image.png)
 
 This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
+
+## API Documentation
+
+The API provides interactive documentation at:
+- Swagger UI: `http://localhost:5000/docs`
+- ReDoc: `http://localhost:5000/redoc`
+
+## Available Endpoints
+
+- `GET /freshrss/unread` - Fetch unread RSS items from FreshRSS
 
 Example of services.yaml:
 
