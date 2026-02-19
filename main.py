@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from fastapi import FastAPI, HTTPException
 import requests
 import humanize
 from datetime import datetime, timezone
@@ -26,7 +26,7 @@ skull = r"""
 print(skull)
 
 # Only load .env in development
-if os.environ.get("FLASK_ENV", "production") == "development":
+if os.environ.get("ENVIRONMENT", "production") == "development":
     try:
         from dotenv import load_dotenv
 
@@ -37,7 +37,7 @@ if os.environ.get("FLASK_ENV", "production") == "development":
 
 def get_env_var(key, default=None):
     value = os.environ.get(key)
-    if value is None and os.environ.get("FLASK_ENV", "production") == "development":
+    if value is None and os.environ.get("ENVIRONMENT", "production") == "development":
         # fallback for dev if not loaded
         try:
             from dotenv import dotenv_values
@@ -52,7 +52,7 @@ FRESHRSS_HOST = get_env_var("FRESHRSS_HOST")
 FRESHRSS_USERNAME = get_env_var("FRESHRSS_USER")
 FRESHRSS_PASSWORD = get_env_var("FRESHRSS_PASS")
 
-app = Flask(__name__)
+app = FastAPI()
 
 AUTH_TOKEN = None
 
@@ -77,7 +77,7 @@ def get_greader_token():
     raise Exception("Auth token not found in FreshRSS response")
 
 
-@app.route("/freshrss/unread")
+@app.get("/freshrss/unread")
 def freshrss_unread():
     token = get_greader_token()
     headers = {"Authorization": f"GoogleLogin auth={token}"}
@@ -108,8 +108,9 @@ def freshrss_unread():
                 "display": f"{entry.get('title')} • {published_str}",
             }
         )
-    return jsonify(items)
+    return items
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5000)

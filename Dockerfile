@@ -23,7 +23,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 WORKDIR /app
 
 # Copy only the necessary application files
-COPY app.py ./
+COPY main.py ./
 
 # Change ownership to non-root user
 RUN chown -R appuser:appuser /app
@@ -33,9 +33,5 @@ USER appuser
 
 EXPOSE 5000
 
-# Set environment variable for Flask
-ENV FLASK_RUN_HOST=0.0.0.0
-ENV FLASK_APP=app.py
-
-# Start Flask app
-CMD ["flask", "run"]
+# Start FastAPI app with uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
