@@ -5,6 +5,7 @@ Simple API to fetch rss feeds for github releases using fresh rss (powered by Fa
 ![alt text](example/image.png)
 
 This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
+Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/) 
 
 ## API Documentation
 
