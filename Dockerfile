@@ -1,5 +1,5 @@
 # Multi-stage build for security and efficiency
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 # Install uv (the package manager)
 RUN pip install --upgrade pip && pip install uv
@@ -11,13 +11,13 @@ COPY pyproject.toml ./
 RUN uv pip install --system -r pyproject.toml
 
 # Production stage
-FROM python:3.12-slim AS production
+FROM python:3.14-slim AS production
 
 # Create a non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 WORKDIR /app
