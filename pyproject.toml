@@ -13,6 +13,4 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "python-dotenv>=1.1.1",
-]
+dev = []

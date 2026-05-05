@@ -25,32 +25,13 @@ skull = r"""
 """
 print(skull)
 
-# Only load .env in development
-if os.environ.get("ENVIRONMENT", "production") == "development":
-    try:
-        from dotenv import load_dotenv
+FRESHRSS_HOST = os.environ.get("FRESHRSS_HOST")
+FRESHRSS_USERNAME = os.environ.get("FRESHRSS_USER")
+FRESHRSS_PASSWORD = os.environ.get("FRESHRSS_PASS")
 
-        load_dotenv()
-    except Exception:
-        print("No data loaded from .env file")
-
-
-def get_env_var(key, default=None):
-    value = os.environ.get(key)
-    if value is None and os.environ.get("ENVIRONMENT", "production") == "development":
-        # fallback for dev if not loaded
-        try:
-            from dotenv import dotenv_values
-
-            value = dotenv_values().get(key, default)
-        except Exception:
-            value = default
-    return value if value is not None else default
-
-
-FRESHRSS_HOST = get_env_var("FRESHRSS_HOST")
-FRESHRSS_USERNAME = get_env_var("FRESHRSS_USER")
-FRESHRSS_PASSWORD = get_env_var("FRESHRSS_PASS")
+_missing = [k for k, v in {"FRESHRSS_HOST": FRESHRSS_HOST, "FRESHRSS_USER": FRESHRSS_USERNAME, "FRESHRSS_PASS": FRESHRSS_PASSWORD}.items() if not v]
+if _missing:
+    raise RuntimeError(f"Missing required environment variables: {', '.join(_missing)}")
 
 app = FastAPI()
 
