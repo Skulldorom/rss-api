@@ -1,3 +1,4 @@
+import logging
 import os
 from fastapi import FastAPI, HTTPException, Query
 import requests
@@ -49,7 +50,8 @@ def get_greader_token():
     }
     res = requests.post(login_url, data=payload, timeout=10)
     if res.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"FreshRSS login failed: {res.text}")
+        logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
+        raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
     # Find and extract 'Auth=' line
     for line in res.text.splitlines():
         if line.startswith("Auth="):

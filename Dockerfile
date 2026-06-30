@@ -8,9 +8,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Copy only dependency manifest and install dependencies
-COPY pyproject.toml ./
-RUN uv pip install --system .
+# Copy dependency manifests and install dependencies from lockfile
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Production stage
 FROM python:3.14-slim AS production
@@ -18,9 +18,8 @@ FROM python:3.14-slim AS production
 # Create a non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy virtual environment from builder stage
+COPY --from=builder /app/.venv /app/.venv
 
 WORKDIR /app
 
@@ -37,7 +36,7 @@ EXPOSE 5000
 
 # Container health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"
+  CMD /app/.venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"
 
 # Start FastAPI app with uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["/app/.venv/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
