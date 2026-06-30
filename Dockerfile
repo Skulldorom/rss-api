@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Copy only dependency manifest and install dependencies
 COPY pyproject.toml ./
-RUN uv pip install --system -r pyproject.toml
+RUN uv pip install --system .
 
 # Production stage
 FROM python:3.14-slim AS production
@@ -34,6 +34,10 @@ RUN chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 5000
+
+# Health check using the /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
 
 # Start FastAPI app with uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
