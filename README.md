@@ -58,6 +58,11 @@ This uses the image `ghcr.io/skulldorom/rss-api:latest`.
 
 If you want to build locally, update `docker-compose.yml` to use `build: .` instead of the `image:` field.
 
+### Health check
+
+The container image defines a Docker `HEALTHCHECK` that calls `GET /health`.
+If you want to override it in `docker-compose.yml`, you can add a service-level `healthcheck` block.
+
 ### How to update
 
 Go to the location where you ran git clone, `cd rss-api`

@@ -9,10 +9,4 @@ services:
       FRESHRSS_HOST: "${FRESHRSS_HOST:-http://localhost:8020}"
       FRESHRSS_USER: "${FRESHRSS_USER}"
       FRESHRSS_PASS: "${FRESHRSS_PASS}"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped
