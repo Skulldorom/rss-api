@@ -1,8 +1,10 @@
 # Multi-stage build for security and efficiency
+FROM ghcr.io/astral-sh/uv:latest AS uv
+
 FROM python:3.14-slim AS builder
 
-# Install uv (the package manager)
-RUN pip install --upgrade pip && pip install uv
+# Copy uv binary from official image
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
 

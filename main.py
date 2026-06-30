@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
 from datetime import datetime, timezone
@@ -47,7 +47,7 @@ def get_greader_token():
         "Email": FRESHRSS_USERNAME,
         "Passwd": FRESHRSS_PASSWORD,
     }
-    res = requests.post(login_url, data=payload)
+    res = requests.post(login_url, data=payload, timeout=10)
     if res.status_code != 200:
         raise Exception("FreshRSS login failed: {}".format(res.text))
     # Find and extract 'Auth=' line
@@ -58,18 +58,23 @@ def get_greader_token():
     raise Exception("Auth token not found in FreshRSS response")
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/freshrss/unread")
-def freshrss_unread():
+def freshrss_unread(n: int = Query(default=10, ge=1)):
     token = get_greader_token()
     headers = {"Authorization": f"GoogleLogin auth={token}"}
     params = {
         "xt": "user/-/state/com.google/read",
         "output": "json",
-        "n": 10,
+        "n": n,
     }
     # Using the same host as before but with the right endpoint
     url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/user/-/state/com.google/reading-list"
-    r = requests.get(url, headers=headers, params=params)
+    r = requests.get(url, headers=headers, params=params, timeout=10)
     r.raise_for_status()
     raw = r.json()
     items = []
