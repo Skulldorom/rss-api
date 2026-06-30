@@ -35,9 +35,9 @@ USER appuser
 
 EXPOSE 5000
 
-# Health check using the /health endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
+# Container health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health')"
 
 # Start FastAPI app with uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000"]
