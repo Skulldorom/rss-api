@@ -1,3 +1,4 @@
+import logging
 import os
 from fastapi import FastAPI, HTTPException, Query
 import requests
@@ -49,13 +50,14 @@ def get_greader_token():
     }
     res = requests.post(login_url, data=payload, timeout=10)
     if res.status_code != 200:
-        raise Exception("FreshRSS login failed: {}".format(res.text))
+        logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
+        raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
     # Find and extract 'Auth=' line
     for line in res.text.splitlines():
         if line.startswith("Auth="):
             AUTH_TOKEN = line.replace("Auth=", "").strip()
             return AUTH_TOKEN
-    raise Exception("Auth token not found in FreshRSS response")
+    raise HTTPException(status_code=502, detail="Auth token not found in FreshRSS response")
 
 
 @app.get("/health")
@@ -83,6 +85,8 @@ def freshrss_unread(n: int = Query(default=10, ge=1)):
 
     for entry in raw.get("items", []):
         published_ts = entry.get("published")
+        if published_ts is None:
+            continue
         published_dt = datetime.fromtimestamp(published_ts, timezone.utc)
         published_str = humanize.naturaltime(now - published_dt)
         items.append(
