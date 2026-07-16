@@ -66,7 +66,10 @@ def health():
 
 
 @app.get("/freshrss/unread")
-def freshrss_unread(n: int = Query(default=10, ge=1)):
+def freshrss_unread(
+    n: int = Query(default=10, ge=1),
+    category: str | None = Query(default=None),
+):
     token = get_greader_token()
     headers = {"Authorization": f"GoogleLogin auth={token}"}
     params = {
@@ -74,8 +77,9 @@ def freshrss_unread(n: int = Query(default=10, ge=1)):
         "output": "json",
         "n": n,
     }
+    stream_id = f"user/-/label/{category}" if category else "user/-/state/com.google/reading-list"
     # Using the same host as before but with the right endpoint
-    url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/user/-/state/com.google/reading-list"
+    url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
     r = requests.get(url, headers=headers, params=params, timeout=10)
     r.raise_for_status()
     raw = r.json()

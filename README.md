@@ -16,6 +16,9 @@ The API provides interactive documentation at:
 ## Available Endpoints
 
 - `GET /freshrss/unread` - Fetch unread RSS items from FreshRSS
+  - Optional query parameters:
+    - `n` (integer, default `10`) - Number of unread items to return
+    - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
 
 Example of services.yaml:
 
