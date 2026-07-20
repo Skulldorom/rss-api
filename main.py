@@ -1,5 +1,6 @@
 import logging
 import os
+from urllib.parse import quote
 from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
@@ -82,7 +83,11 @@ def freshrss_unread(
         "n": n,
     }
     category_label = category if isinstance(category, str) and category else None
-    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
+    stream_id = (
+        f"user/-/label/{quote(category_label, safe='')}"
+        if category_label
+        else "user/-/state/com.google/reading-list"
+    )
     # Using the same host as before but with the right endpoint
     url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
     try:
