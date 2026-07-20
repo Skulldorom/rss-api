@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
@@ -37,31 +38,47 @@ if _missing:
 app = FastAPI()
 
 AUTH_TOKEN = None
+AUTH_TOKEN_LOCK = threading.Lock()
 
 
 def get_greader_token():
     global AUTH_TOKEN
-    if AUTH_TOKEN:
-        return AUTH_TOKEN
-    login_url = f"{FRESHRSS_HOST}/api/greader.php/accounts/ClientLogin"
-    payload = {
-        "Email": FRESHRSS_USERNAME,
-        "Passwd": FRESHRSS_PASSWORD,
-    }
-    try:
-        res = requests.post(login_url, data=payload, timeout=10)
-    except requests.RequestException as exc:
-        logging.warning("FreshRSS login request failed: %s", exc)
-        raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
-    if res.status_code != 200:
-        logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
-        raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
-    # Find and extract 'Auth=' line
-    for line in res.text.splitlines():
-        if line.startswith("Auth="):
-            AUTH_TOKEN = line.replace("Auth=", "").strip()
+    with AUTH_TOKEN_LOCK:
+        if AUTH_TOKEN:
             return AUTH_TOKEN
-    raise HTTPException(status_code=502, detail="Auth token not found in FreshRSS response")
+        login_url = f"{FRESHRSS_HOST}/api/greader.php/accounts/ClientLogin"
+        payload = {
+            "Email": FRESHRSS_USERNAME,
+            "Passwd": FRESHRSS_PASSWORD,
+        }
+        try:
+            res = requests.post(login_url, data=payload, timeout=10)
+        except requests.RequestException as exc:
+            logging.warning("FreshRSS login request failed: %s", exc)
+            raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
+        if res.status_code != 200:
+            logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
+            raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
+        # Find and extract 'Auth=' line
+        for line in res.text.splitlines():
+            if line.startswith("Auth="):
+                AUTH_TOKEN = line.replace("Auth=", "").strip()
+                return AUTH_TOKEN
+        raise HTTPException(status_code=502, detail="Auth token not found in FreshRSS response")
+
+
+def request_unread(token, n, category):
+    """Construct and send one upstream unread request."""
+    headers = {"Authorization": f"GoogleLogin auth={token}"}
+    params = {
+        "xt": "user/-/state/com.google/read",
+        "output": "json",
+        "n": n,
+    }
+    category_label = category if isinstance(category, str) and category else None
+    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
+    url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
+    return requests.get(url, headers=headers, params=params, timeout=10)
 
 
 @app.get("/health")
@@ -75,18 +92,15 @@ def freshrss_unread(
     category: str | None = Query(default=None),
 ):
     token = get_greader_token()
-    headers = {"Authorization": f"GoogleLogin auth={token}"}
-    params = {
-        "xt": "user/-/state/com.google/read",
-        "output": "json",
-        "n": n,
-    }
-    category_label = category if isinstance(category, str) and category else None
-    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
-    # Using the same host as before but with the right endpoint
-    url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        r = request_unread(token, n, category)
+        if r.status_code in (401, 403):
+            global AUTH_TOKEN
+            with AUTH_TOKEN_LOCK:
+                if AUTH_TOKEN == token:
+                    AUTH_TOKEN = None
+            token = get_greader_token()
+            r = request_unread(token, n, category)
         r.raise_for_status()
         raw = r.json()
     except requests.RequestException as exc:
