@@ -84,15 +84,30 @@ def test_get_greader_token_logs_in_once_and_caches_token(monkeypatch):
     ]
 
 
-def test_get_greader_token_rejects_failed_login(monkeypatch):
-    main = import_app(monkeypatch)
-    monkeypatch.setattr(main.requests, "post", lambda *args, **kwargs: FakeResponse(status_code=403, text="nope"))
+def test_get_greader_token_rejects_failed_login_without_logging_secrets(monkeypatch, caplog):
+    credentials = {
+        "FRESHRSS_HOST": "https://freshrss.example.test",
+        "FRESHRSS_USER": "sentinel-username",
+        "FRESHRSS_PASS": "sentinel-password",
+    }
+    main = import_app(monkeypatch, credentials)
+    response_body = "sentinel-response-body\nAuth=sentinel-token"
+    monkeypatch.setattr(
+        main.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(status_code=403, text=response_body),
+    )
 
-    with pytest.raises(HTTPException) as excinfo:
-        main.get_greader_token()
+    with caplog.at_level("WARNING"):
+        with pytest.raises(HTTPException) as excinfo:
+            main.get_greader_token()
 
     assert excinfo.value.status_code == 502
     assert "FreshRSS login failed with status 403" == excinfo.value.detail
+    assert "status=403" in caplog.text
+    assert "upstream_host=freshrss.example.test" in caplog.text
+    for secret in (*credentials.values(), response_body, "sentinel-token"):
+        assert secret not in caplog.text
 
 
 def test_get_greader_token_rejects_missing_auth_line(monkeypatch):
