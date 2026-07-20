@@ -6,7 +6,9 @@ services:
     ports:
       - "5000:5000"
     environment:
-      FRESHRSS_HOST: "${FRESHRSS_HOST:-http://localhost:8020}"
-      FRESHRSS_USER: "${FRESHRSS_USER}"
-      FRESHRSS_PASS: "${FRESHRSS_PASS}"
+      # Required interpolation makes Compose stop with a useful error before it
+      # creates a container that would otherwise repeatedly restart.
+      FRESHRSS_HOST: "${FRESHRSS_HOST:?Set FRESHRSS_HOST in .env (see README.md)}"
+      FRESHRSS_USER: "${FRESHRSS_USER:?Set FRESHRSS_USER in .env}"
+      FRESHRSS_PASS: "${FRESHRSS_PASS:?Set FRESHRSS_PASS in .env}"
     restart: unless-stopped
