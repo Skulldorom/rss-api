@@ -71,7 +71,7 @@ def health():
 
 @app.get("/freshrss/unread")
 def freshrss_unread(
-    n: int = Query(default=10, ge=1),
+    n: int = Query(default=10, ge=1, le=100),
     category: str | None = Query(default=None),
 ):
     token = get_greader_token()

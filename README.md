@@ -17,7 +17,7 @@ The API provides interactive documentation at:
 
 - `GET /freshrss/unread` - Fetch unread RSS items from FreshRSS
   - Optional query parameters:
-    - `n` (integer, default `10`) - Number of unread items to return
+    - `n` (integer, default `10`, valid range `1`–`100`) - Number of unread items to return
     - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
 
 ## Testing

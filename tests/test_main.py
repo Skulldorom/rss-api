@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +162,40 @@ def test_freshrss_unread_fetches_reading_list_and_shapes_items(monkeypatch):
     assert result[0]["published"] == 1700000000
     assert result[0]["url"] == "https://example.test/release"
     assert result[0]["display"].startswith("Release shipped • ")
+
+
+@pytest.mark.parametrize("n", [0, 101])
+def test_freshrss_unread_rejects_out_of_range_n_without_contacting_freshrss(monkeypatch, n):
+    main = import_app(monkeypatch)
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("FreshRSS must not be contacted for an invalid n value")
+
+    monkeypatch.setattr(main.requests, "post", unexpected_request)
+    monkeypatch.setattr(main.requests, "get", unexpected_request)
+
+    response = TestClient(main.app).get("/freshrss/unread", params={"n": n})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("n", [1, 100])
+def test_freshrss_unread_accepts_boundary_n_values(monkeypatch, n):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    captured = {}
+
+    def fake_get(url, headers, params, timeout):
+        captured["n"] = params["n"]
+        return FakeResponse(payload={"items": []})
+
+    monkeypatch.setattr(main.requests, "get", fake_get)
+
+    response = TestClient(main.app).get("/freshrss/unread", params={"n": n})
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert captured["n"] == n
 
 
 def test_freshrss_unread_scopes_to_category_and_handles_missing_url(monkeypatch):
