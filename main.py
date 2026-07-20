@@ -1,9 +1,11 @@
 import logging
 import os
+import secrets
 import threading
 from urllib.parse import quote, urlsplit
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import requests
 import humanize
 from datetime import datetime, timezone
@@ -34,12 +36,22 @@ print(skull)
 FRESHRSS_HOST = os.environ.get("FRESHRSS_HOST")
 FRESHRSS_USERNAME = os.environ.get("FRESHRSS_USER")
 FRESHRSS_PASSWORD = os.environ.get("FRESHRSS_PASS")
+RSS_API_TOKEN = os.environ.get("RSS_API_TOKEN")  # optional — when unset, auth is skipped
 
-_missing = [k for k, v in {"FRESHRSS_HOST": FRESHRSS_HOST, "FRESHRSS_USER": FRESHRSS_USERNAME, "FRESHRSS_PASS": FRESHRSS_PASSWORD}.items() if not v]
+_missing = [
+    key
+    for key, value in {
+        "FRESHRSS_HOST": FRESHRSS_HOST,
+        "FRESHRSS_USER": FRESHRSS_USERNAME,
+        "FRESHRSS_PASS": FRESHRSS_PASSWORD,
+    }.items()
+    if not value
+]
 if _missing:
     raise RuntimeError(f"Missing required environment variables: {', '.join(_missing)}")
 
 app = FastAPI()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 AUTH_TOKEN = None
 AUTH_TOKEN_LOCK = threading.Lock()
@@ -101,6 +113,25 @@ def validate_freshrss_response(raw):
         raise HTTPException(status_code=502, detail="FreshRSS returned an invalid unread response") from exc
 
 
+def require_api_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+):
+    """Require the configured bearer token when RSS_API_TOKEN is set.
+
+    When RSS_API_TOKEN is not configured, all requests pass through without
+    authentication — use this for trusted/internal networks. When set, every
+    protected endpoint demands a matching ``Authorization: Bearer <token>`` header.
+    """
+    if not RSS_API_TOKEN:
+        return  # auth is disabled
+    if credentials is None or not secrets.compare_digest(credentials.credentials, RSS_API_TOKEN):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 def get_greader_token():
     global AUTH_TOKEN
     with AUTH_TOKEN_LOCK:
@@ -157,7 +188,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/freshrss/unread")
+@app.get("/freshrss/unread", dependencies=[Depends(require_api_token)])
 def freshrss_unread(
     n: int = Query(default=10, ge=1, le=100),
     category: str | None = Query(default=None, max_length=200),

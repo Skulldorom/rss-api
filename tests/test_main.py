@@ -21,6 +21,8 @@ REQUIRED_ENV = {
     "FRESHRSS_PASS": "secret",
 }
 
+AUTH_TOKEN_VALUE = "api-test-token"
+
 
 class FakeResponse:
     def __init__(self, status_code=200, text="", payload=None, raise_error=None):
@@ -84,7 +86,11 @@ def test_import_requires_freshrss_environment(monkeypatch):
     with pytest.raises(RuntimeError) as excinfo:
         importlib.import_module("main")
 
-    assert all(name in str(excinfo.value) for name in REQUIRED_ENV)
+    message = str(excinfo.value)
+    assert "FRESHRSS_HOST" in message
+    assert "FRESHRSS_USER" in message
+    assert "FRESHRSS_PASS" in message
+    # RSS_API_TOKEN is optional — not required for import
 
 
 # ── Health endpoint ───────────────────────────────────────────────────
@@ -96,6 +102,77 @@ def test_health_endpoint_returns_json_over_http(test_client):
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/json"
     assert response.json() == {"status": "ok"}
+
+
+# ── Authentication ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer wrong-token"}],
+    ids=["missing", "invalid"],
+)
+def test_unread_rejects_unauthorized_requests_without_contacting_freshrss(
+    test_client, monkeypatch, main_module, headers
+):
+    main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE  # enable auth for this test
+    monkeypatch.setattr(main_module, "get_greader_token", lambda: "unreachable")
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("unauthorized requests must not contact FreshRSS")
+
+    monkeypatch.setattr(main_module.requests, "post", unexpected_request)
+    monkeypatch.setattr(main_module.requests, "get", unexpected_request)
+
+    response = test_client.get("/freshrss/unread", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API token"}
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_unread_accepts_valid_credentials(test_client, monkeypatch, main_module):
+    main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE  # enable auth for this test
+    calls = install_freshrss_transport(monkeypatch, main_module)
+
+    response = test_client.get(
+        "/freshrss/unread",
+        headers={"Authorization": "Bearer api-test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert len(calls["post"]) == 1  # authenticated and logged in
+
+
+def test_unread_allows_requests_when_token_not_configured(monkeypatch):
+    """When RSS_API_TOKEN is unset, auth is skipped entirely."""
+    env_without_token = {k: v for k, v in REQUIRED_ENV.items() if k != "RSS_API_TOKEN"}
+    for name in REQUIRED_ENV:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in env_without_token.items():
+        monkeypatch.setenv(name, value)
+    sys.modules.pop("main", None)
+    module = importlib.import_module("main")
+
+    # Stub FreshRSS transport so we don't need a real server
+    monkeypatch.setattr(
+        module.requests, "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=no-auth-token\n"),
+    )
+    monkeypatch.setattr(
+        module.requests, "get",
+        lambda *args, **kwargs: FakeResponse(payload={"items": []}),
+    )
+
+    with TestClient(module.app) as client:
+        # No Authorization header at all — should still work
+        response = client.get("/freshrss/unread")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    sys.modules.pop("main", None)
 
 
 # ── Unread endpoint (via TestClient) ──────────────────────────────────

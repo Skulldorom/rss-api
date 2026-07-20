@@ -5,7 +5,7 @@ Simple API to fetch rss feeds for github releases using fresh rss (powered by Fa
 ![alt text](example/image.png)
 
 This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
-Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/) 
+Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/)
 
 ## API Documentation
 
@@ -19,6 +19,31 @@ The API provides interactive documentation at:
   - Optional query parameters:
     - `n` (integer, default `10`, valid range `1`–`100`) - Number of unread items to return
     - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
+- `GET /health` - Container health endpoint (does not require authentication)
+
+## Authentication
+
+Bearer authentication is **optional**. When `RSS_API_TOKEN` is not set the API
+accepts all requests — convenient for trusted/internal networks. Set
+`RSS_API_TOKEN` to a long random secret to require an `Authorization: Bearer <token>`
+header on every protected endpoint. `/health` always remains unauthenticated.
+
+```bash
+# With auth enabled (token set):
+curl \
+  -H "Authorization: Bearer your-secret-token" \
+  "http://localhost:5000/freshrss/unread?n=10&category=Tech"
+
+# Without auth (token not set):
+curl "http://localhost:5000/freshrss/unread?n=10&category=Tech"
+```
+
+When auth is enabled, clients such as Homepage must send the same header:
+
+```yaml
+headers:
+  Authorization: Bearer your-secret-token
+```
 
 ## Testing
 
@@ -42,6 +67,8 @@ Example of services.yaml:
               type: customapi
               name: Unread RSS
               url: http://192.168.0.11:5000/freshrss/unread
+              headers:
+                Authorization: Bearer your-secret-token
               display: dynamic-list
               mappings:
                 name: feed
@@ -50,7 +77,7 @@ Example of services.yaml:
 
 # Docker
 
-Copy the example environment file and set all three required values:
+Copy the example environment file and set the required values:
 
 ```bash
 cp .env.example .env

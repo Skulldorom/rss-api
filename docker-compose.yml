@@ -11,4 +11,7 @@ services:
       FRESHRSS_HOST: "${FRESHRSS_HOST:?Set FRESHRSS_HOST in .env (see README.md)}"
       FRESHRSS_USER: "${FRESHRSS_USER:?Set FRESHRSS_USER in .env}"
       FRESHRSS_PASS: "${FRESHRSS_PASS:?Set FRESHRSS_PASS in .env}"
+      # Optional — when unset the API runs without bearer authentication.
+      # Set this to a long random secret to require Authorization: Bearer <token>.
+      RSS_API_TOKEN: "${RSS_API_TOKEN:-}"
     restart: unless-stopped
