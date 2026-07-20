@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+from urllib.parse import urlsplit
 from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
@@ -22,7 +23,7 @@ skull = r"""
             ⠄⠄⠂⠄⠄⠨⣔⡝⠼⡄⠂⣦⡆⣿⣲⠐⠑⠁⠄⠃
             ⠄⠄⠄⠄⠄⠄⠃⢫⢛⣙⡊⣜⣏⡝⣝⠆
             ⠄⠄⠄⠄⠄⠄⠈⠈⠁⠁⠁⠈⠈⠊
-            
+
             RSS api - Starting...
 """
 print(skull)
@@ -57,7 +58,12 @@ def get_greader_token():
             logging.warning("FreshRSS login request failed: %s", exc)
             raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
         if res.status_code != 200:
-            logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
+            upstream_host = urlsplit(FRESHRSS_HOST).hostname or "unknown"
+            logging.warning(
+                "FreshRSS login failed (status=%d, upstream_host=%s)",
+                res.status_code,
+                upstream_host,
+            )
             raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
         # Find and extract 'Auth=' line
         for line in res.text.splitlines():
