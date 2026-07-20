@@ -155,6 +155,8 @@ def test_unread_accepts_explicit_query_and_encoded_category(
         ("What?", "user/-/label/What%3F"),
         ("日本語", "user/-/label/%E6%97%A5%E6%9C%AC%E8%AA%9E"),
         ("  \t\n ", "user/-/state/com.google/reading-list"),
+        (".", "user/-/state/com.google/reading-list"),
+        ("..", "user/-/state/com.google/reading-list"),
     ],
 )
 def test_freshrss_unread_normalizes_and_encodes_category(
@@ -504,6 +506,29 @@ def test_unread_rejects_out_of_range_timestamps(
         lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
     )
     payload = {"items": [{"title": "Bad timestamp", "published": timestamp}]}
+    monkeypatch.setattr(
+        main_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(payload=payload),
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+def test_unread_rejects_timestamp_overflowing_isfinite(
+    test_client, monkeypatch, main_module
+):
+    """A huge int that overflows math.isfinite() must still produce a 502, not 500."""
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    huge = 10**1000  # far beyond float range — isfinite() raises OverflowError
+    payload = {"items": [{"title": "Overflow timestamp", "published": huge}]}
     monkeypatch.setattr(
         main_module.requests,
         "get",

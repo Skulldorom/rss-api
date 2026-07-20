@@ -70,11 +70,13 @@ class FreshRSSItem(BaseModel):
     def validate_published_timestamp(cls, value):
         if value is None:
             return value
-        if not isfinite(value):
-            raise ValueError("timestamp must be finite")
         try:
+            if not isfinite(value):
+                raise ValueError("timestamp must be finite")
             datetime.fromtimestamp(value, timezone.utc)
-        except (OverflowError, OSError, ValueError) as exc:
+        except OverflowError:
+            raise ValueError("timestamp is outside the supported range")
+        except (OSError, ValueError) as exc:
             raise ValueError("timestamp is outside the supported range") from exc
         return value
 
@@ -139,6 +141,8 @@ def request_unread(token, n, category):
         "n": n,
     }
     category_label = category.strip() if isinstance(category, str) else None
+    if category_label in (".", ".."):
+        category_label = None  # dot-only labels resolve as path traversal; use reading-list
     stream_id = (
         f"user/-/label/{quote(category_label, safe='')}"
         if category_label
