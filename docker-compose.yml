@@ -9,4 +9,5 @@ services:
       FRESHRSS_HOST: "${FRESHRSS_HOST:-http://localhost:8020}"
       FRESHRSS_USER: "${FRESHRSS_USER}"
       FRESHRSS_PASS: "${FRESHRSS_PASS}"
+      RSS_API_TOKEN: "${RSS_API_TOKEN}"
     restart: unless-stopped

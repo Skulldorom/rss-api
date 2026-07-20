@@ -19,6 +19,26 @@ The API provides interactive documentation at:
   - Optional query parameters:
     - `n` (integer, default `10`) - Number of unread items to return
     - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
+- `GET /health` - Container health endpoint (does not require authentication)
+
+## Authentication
+
+Set the required `RSS_API_TOKEN` environment variable to a long, random secret. All
+endpoints that access FreshRSS require that secret as a bearer token; `/health`
+remains unauthenticated so container health checks continue to work.
+
+```bash
+curl \
+  -H "Authorization: Bearer ${RSS_API_TOKEN}" \
+  "http://localhost:5000/freshrss/unread?n=10&category=Tech"
+```
+
+Clients such as Homepage must send the same header:
+
+```yaml
+headers:
+  Authorization: Bearer your-rss-api-token
+```
 
 ## Testing
 
@@ -42,6 +62,8 @@ Example of services.yaml:
               type: customapi
               name: Unread RSS
               url: http://192.168.0.11:5000/freshrss/unread
+              headers:
+                Authorization: Bearer your-rss-api-token
               display: dynamic-list
               mappings:
                 name: feed
@@ -56,6 +78,7 @@ You can configure environment variables directly in `docker-compose.yml` instead
 environment:
 	FRESHRSS_USER: "user"
 	FRESHRSS_PASS: "password"
+	RSS_API_TOKEN: "replace-with-a-long-random-secret"
 ```
 
 Edit these values in your `docker-compose.yml` to match your setup.

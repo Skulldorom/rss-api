@@ -1,6 +1,9 @@
 import logging
 import os
-from fastapi import FastAPI, HTTPException, Query
+import secrets
+
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import requests
 import humanize
 from datetime import datetime, timezone
@@ -29,14 +32,37 @@ print(skull)
 FRESHRSS_HOST = os.environ.get("FRESHRSS_HOST")
 FRESHRSS_USERNAME = os.environ.get("FRESHRSS_USER")
 FRESHRSS_PASSWORD = os.environ.get("FRESHRSS_PASS")
+RSS_API_TOKEN = os.environ.get("RSS_API_TOKEN")
 
-_missing = [k for k, v in {"FRESHRSS_HOST": FRESHRSS_HOST, "FRESHRSS_USER": FRESHRSS_USERNAME, "FRESHRSS_PASS": FRESHRSS_PASSWORD}.items() if not v]
+_missing = [
+    key
+    for key, value in {
+        "FRESHRSS_HOST": FRESHRSS_HOST,
+        "FRESHRSS_USER": FRESHRSS_USERNAME,
+        "FRESHRSS_PASS": FRESHRSS_PASSWORD,
+        "RSS_API_TOKEN": RSS_API_TOKEN,
+    }.items()
+    if not value
+]
 if _missing:
     raise RuntimeError(f"Missing required environment variables: {', '.join(_missing)}")
 
 app = FastAPI()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 AUTH_TOKEN = None
+
+
+def require_api_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+):
+    """Require the configured bearer token before accessing protected endpoints."""
+    if credentials is None or not secrets.compare_digest(credentials.credentials, RSS_API_TOKEN):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def get_greader_token():
@@ -69,7 +95,7 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/freshrss/unread")
+@app.get("/freshrss/unread", dependencies=[Depends(require_api_token)])
 def freshrss_unread(
     n: int = Query(default=10, ge=1),
     category: str | None = Query(default=None),

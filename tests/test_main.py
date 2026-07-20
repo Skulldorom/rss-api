@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +16,7 @@ REQUIRED_ENV = {
     "FRESHRSS_HOST": "https://freshrss.example.test",
     "FRESHRSS_USER": "reader",
     "FRESHRSS_PASS": "secret",
+    "RSS_API_TOKEN": "api-test-token",
 }
 
 
@@ -54,13 +56,52 @@ def test_import_requires_freshrss_environment(monkeypatch):
     assert "FRESHRSS_HOST" in message
     assert "FRESHRSS_USER" in message
     assert "FRESHRSS_PASS" in message
+    assert "RSS_API_TOKEN" in message
 
 
 def test_health_endpoint_returns_ok(monkeypatch):
     main = import_app(monkeypatch)
 
-    assert main.health() == {"status": "ok"}
+    response = TestClient(main.app).get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
     assert any(route.path == "/health" for route in main.app.routes)
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Bearer wrong-token"}],
+    ids=["missing", "invalid"],
+)
+def test_unread_rejects_unauthorized_requests_without_contacting_freshrss(monkeypatch, headers):
+    main = import_app(monkeypatch)
+
+    def unexpected_request(*args, **kwargs):
+        pytest.fail("unauthorized requests must not contact FreshRSS")
+
+    monkeypatch.setattr(main.requests, "post", unexpected_request)
+    monkeypatch.setattr(main.requests, "get", unexpected_request)
+
+    response = TestClient(main.app).get("/freshrss/unread", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Invalid or missing API token"}
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_unread_accepts_valid_credentials(monkeypatch):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "fresh-token")
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: FakeResponse(payload={"items": []}))
+
+    response = TestClient(main.app).get(
+        "/freshrss/unread",
+        headers={"Authorization": "Bearer api-test-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_get_greader_token_logs_in_once_and_caches_token(monkeypatch):
