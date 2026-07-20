@@ -392,3 +392,125 @@ def test_get_greader_token_is_concurrent_safe(monkeypatch, main_module):
 
     assert tokens == ["shared-token"] * 5
     assert login_calls == 1
+
+
+# ── Pydantic response validation ──────────────────────────────────────
+
+
+@pytest.mark.parametrize("payload", [[], "not an object", None])
+def test_unread_rejects_malformed_top_level_payload(
+    test_client, monkeypatch, main_module, payload
+):
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    response_obj = FakeResponse(payload={})
+    response_obj._payload = payload
+    monkeypatch.setattr(
+        main_module.requests, "get", lambda *args, **kwargs: response_obj
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+@pytest.mark.parametrize("items", [None, {}, "not a list", ["not an object"]])
+def test_unread_rejects_invalid_items(
+    test_client, monkeypatch, main_module, items
+):
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    monkeypatch.setattr(
+        main_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(payload={"items": items}),
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        {"origin": "not an object"},
+        {"origin": []},
+        {"alternate": "not a list"},
+        {"alternate": {}},
+        {"alternate": ["not an object"]},
+    ],
+)
+def test_unread_rejects_malformed_item_containers(
+    test_client, monkeypatch, main_module, invalid_field
+):
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    item = {"title": "Bad item", "published": 1700000000, **invalid_field}
+    monkeypatch.setattr(
+        main_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(payload={"items": [item]}),
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+@pytest.mark.parametrize(
+    "timestamp", ["1700000000", True, float("nan"), float("inf")]
+)
+def test_unread_rejects_nonnumeric_timestamps(
+    test_client, monkeypatch, main_module, timestamp
+):
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    payload = {"items": [{"title": "Bad timestamp", "published": timestamp}]}
+    monkeypatch.setattr(
+        main_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(payload=payload),
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+@pytest.mark.parametrize("timestamp", [10**30, -(10**30)])
+def test_unread_rejects_out_of_range_timestamps(
+    test_client, monkeypatch, main_module, timestamp
+):
+    monkeypatch.setattr(
+        main_module.requests,
+        "post",
+        lambda *args, **kwargs: FakeResponse(text="Auth=token\n"),
+    )
+    payload = {"items": [{"title": "Bad timestamp", "published": timestamp}]}
+    monkeypatch.setattr(
+        main_module.requests,
+        "get",
+        lambda *args, **kwargs: FakeResponse(payload=payload),
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}

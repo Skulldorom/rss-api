@@ -7,6 +7,8 @@ from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
 from datetime import datetime, timezone
+from math import isfinite
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, ValidationError, field_validator
 
 # Print ASCII skull
 skull = r"""
@@ -41,6 +43,60 @@ app = FastAPI()
 
 AUTH_TOKEN = None
 AUTH_TOKEN_LOCK = threading.Lock()
+
+
+class FreshRSSOrigin(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    title: str | None = None
+
+
+class FreshRSSAlternate(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    href: str | None = None
+
+
+class FreshRSSItem(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    title: str | None = None
+    origin: FreshRSSOrigin | None = None
+    published: StrictInt | StrictFloat | None = None
+    alternate: list[FreshRSSAlternate] | None = None
+
+    @field_validator("published")
+    @classmethod
+    def validate_published_timestamp(cls, value):
+        if value is None:
+            return value
+        if not isfinite(value):
+            raise ValueError("timestamp must be finite")
+        try:
+            datetime.fromtimestamp(value, timezone.utc)
+        except (OverflowError, OSError, ValueError) as exc:
+            raise ValueError("timestamp is outside the supported range") from exc
+        return value
+
+
+class FreshRSSResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    items: list[FreshRSSItem]
+
+
+def validate_freshrss_response(raw):
+    """Validate FreshRSS data, rejecting the whole malformed response.
+
+    A response with any malformed item produces a sanitized 502 rather than a
+    partial result. This keeps upstream data-quality failures visible and gives
+    callers consistent all-or-nothing results.
+    """
+    try:
+        return FreshRSSResponse.model_validate(raw)
+    except ValidationError as exc:
+        logging.warning("FreshRSS returned an invalid unread response: %s", exc)
+        raise HTTPException(status_code=502, detail="FreshRSS returned an invalid unread response") from exc
 
 
 def get_greader_token():
@@ -117,25 +173,26 @@ def freshrss_unread(
     except requests.RequestException as exc:
         logging.warning("FreshRSS unread request failed: %s", exc)
         raise HTTPException(status_code=502, detail="FreshRSS unread request failed") from exc
+    response = validate_freshrss_response(raw)
     items = []
 
     now = datetime.now(timezone.utc)
 
-    for entry in raw.get("items", []):
-        published_ts = entry.get("published")
+    for entry in response.items:
+        published_ts = entry.published
         if published_ts is None:
             continue
         published_dt = datetime.fromtimestamp(published_ts, timezone.utc)
         published_str = humanize.naturaltime(now - published_dt)
-        alternates = entry.get("alternate") or []
-        item_url = alternates[0].get("href", "") if alternates else ""
+        alternates = entry.alternate or []
+        item_url = alternates[0].href or "" if alternates else ""
         items.append(
             {
-                "title": entry.get("title"),
-                "feed": entry.get("origin", {}).get("title"),
-                "published": entry.get("published"),
+                "title": entry.title,
+                "feed": entry.origin.title if entry.origin else None,
+                "published": published_ts,
                 "url": item_url,
-                "display": f"{entry.get('title')} • {published_str}",
+                "display": f"{entry.title} • {published_str}",
             }
         )
     return items
