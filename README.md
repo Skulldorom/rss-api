@@ -86,6 +86,15 @@ Copy the example environment file and set the required values:
 cp .env.example .env
 ```
 
+Configure these environment variables in `.env` or your Compose environment:
+
+| Variable | Required | Default if unset | Description |
+| --- | --- | --- | --- |
+| `FRESHRSS_HOST` | Yes | No default; app startup fails. | FreshRSS base URL reachable from the API container. The example `.env` uses `http://freshrss` for a same-network Compose service. |
+| `FRESHRSS_USER` | Yes | No default; app startup fails. | FreshRSS username used for Google Reader API login. |
+| `FRESHRSS_PASS` | Yes | No default; app startup fails. | FreshRSS password used for Google Reader API login. |
+| `RSS_API_TOKEN` | No | Empty/unset; bearer auth disabled. | Optional bearer token for this API. When set, protected endpoints require `Authorization: Bearer <token>`. |
+
 `FRESHRSS_HOST` must be a URL that is reachable **from the API container**. Do
 not use `localhost`: inside the container that name refers to the API container
 itself, not FreshRSS. Compose validates `FRESHRSS_HOST`, `FRESHRSS_USER`, and
@@ -111,6 +120,8 @@ services:
       FRESHRSS_HOST: http://freshrss
       FRESHRSS_USER: ${FRESHRSS_USER:?Set FRESHRSS_USER in .env}
       FRESHRSS_PASS: ${FRESHRSS_PASS:?Set FRESHRSS_PASS in .env}
+      # Optional: require Authorization: Bearer <token> on protected endpoints.
+      RSS_API_TOKEN: ${RSS_API_TOKEN:-}
 ```
 
 Equivalently, keep the provided Compose file and set this in `.env`:
