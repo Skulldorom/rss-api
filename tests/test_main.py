@@ -1,5 +1,8 @@
 import importlib
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -31,6 +34,8 @@ class FakeResponse:
     def raise_for_status(self):
         if self._raise_error:
             raise self._raise_error
+        if self.status_code >= 400:
+            raise requests.HTTPError(f"{self.status_code} upstream error")
 
 
 def import_app(monkeypatch, env=None):
@@ -204,3 +209,79 @@ def test_freshrss_unread_wraps_upstream_http_errors(monkeypatch):
 
     assert excinfo.value.status_code == 502
     assert excinfo.value.detail == "FreshRSS unread request failed"
+
+
+def test_freshrss_unread_reauthenticates_and_retries_once(monkeypatch):
+    main = import_app(monkeypatch)
+    main.AUTH_TOKEN = "expired-token"
+    login_calls = []
+    get_calls = []
+
+    def fake_post(*args, **kwargs):
+        login_calls.append((args, kwargs))
+        return FakeResponse(text="Auth=fresh-token")
+
+    def fake_get(url, headers, params, timeout):
+        get_calls.append(headers["Authorization"])
+        if len(get_calls) == 1:
+            return FakeResponse(status_code=401)
+        return FakeResponse(payload={"items": []})
+
+    monkeypatch.setattr(main.requests, "post", fake_post)
+    monkeypatch.setattr(main.requests, "get", fake_get)
+
+    assert main.freshrss_unread() == []
+    assert get_calls == [
+        "GoogleLogin auth=expired-token",
+        "GoogleLogin auth=fresh-token",
+    ]
+    assert len(login_calls) == 1
+    assert main.AUTH_TOKEN == "fresh-token"
+
+
+def test_freshrss_unread_fails_after_single_reauthentication_retry(monkeypatch):
+    main = import_app(monkeypatch)
+    main.AUTH_TOKEN = "expired-token"
+    get_calls = []
+    monkeypatch.setattr(main.requests, "post", lambda *args, **kwargs: FakeResponse(text="Auth=fresh-token"))
+
+    def fake_get(*args, **kwargs):
+        get_calls.append(kwargs["headers"]["Authorization"])
+        return FakeResponse(status_code=403)
+
+    monkeypatch.setattr(main.requests, "get", fake_get)
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS unread request failed"
+    assert get_calls == [
+        "GoogleLogin auth=expired-token",
+        "GoogleLogin auth=fresh-token",
+    ]
+
+
+def test_get_greader_token_is_concurrent_safe(monkeypatch):
+    main = import_app(monkeypatch)
+    login_calls = 0
+    calls_lock = threading.Lock()
+    workers_ready = threading.Barrier(5)
+
+    def fake_post(*args, **kwargs):
+        nonlocal login_calls
+        with calls_lock:
+            login_calls += 1
+        time.sleep(0.05)
+        return FakeResponse(text="Auth=shared-token")
+
+    def acquire_token():
+        workers_ready.wait()
+        return main.get_greader_token()
+
+    monkeypatch.setattr(main.requests, "post", fake_post)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        tokens = list(executor.map(lambda _: acquire_token(), range(5)))
+
+    assert tokens == ["shared-token"] * 5
+    assert login_calls == 1
