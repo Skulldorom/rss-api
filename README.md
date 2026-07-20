@@ -1,6 +1,7 @@
 # rss-api
 
-[![Tests](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml)
+[![Tests](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml)
+[![Docker](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml)
 
 Simple API to fetch rss feeds for github releases using fresh rss (powered by FastAPI)
 
