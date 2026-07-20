@@ -204,3 +204,82 @@ def test_freshrss_unread_wraps_upstream_http_errors(monkeypatch):
 
     assert excinfo.value.status_code == 502
     assert excinfo.value.detail == "FreshRSS unread request failed"
+
+
+@pytest.mark.parametrize("payload", [[], "not an object", None])
+def test_freshrss_unread_rejects_malformed_top_level_payload(monkeypatch, payload):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    response = FakeResponse(payload={})
+    response._payload = payload
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: response)
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS returned an invalid unread response"
+
+
+@pytest.mark.parametrize("items", [None, {}, "not a list", ["not an object"]])
+def test_freshrss_unread_rejects_invalid_items(monkeypatch, items):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: FakeResponse(payload={"items": items}))
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS returned an invalid unread response"
+
+
+@pytest.mark.parametrize(
+    "invalid_field",
+    [
+        {"origin": "not an object"},
+        {"origin": []},
+        {"alternate": "not a list"},
+        {"alternate": {}},
+        {"alternate": ["not an object"]},
+    ],
+)
+def test_freshrss_unread_rejects_malformed_item_containers(monkeypatch, invalid_field):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    item = {"title": "Bad item", "published": 1700000000, **invalid_field}
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: FakeResponse(payload={"items": [item]}))
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS returned an invalid unread response"
+
+
+@pytest.mark.parametrize("timestamp", ["1700000000", True, float("nan"), float("inf")])
+def test_freshrss_unread_rejects_nonnumeric_timestamps(monkeypatch, timestamp):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    payload = {"items": [{"title": "Bad timestamp", "published": timestamp}]}
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: FakeResponse(payload=payload))
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS returned an invalid unread response"
+
+
+@pytest.mark.parametrize("timestamp", [10**30, -(10**30)])
+def test_freshrss_unread_rejects_out_of_range_timestamps(monkeypatch, timestamp):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    payload = {"items": [{"title": "Bad timestamp", "published": timestamp}]}
+    monkeypatch.setattr(main.requests, "get", lambda *args, **kwargs: FakeResponse(payload=payload))
+
+    with pytest.raises(HTTPException) as excinfo:
+        main.freshrss_unread()
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == "FreshRSS returned an invalid unread response"
