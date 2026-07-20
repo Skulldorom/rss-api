@@ -19,8 +19,9 @@ REQUIRED_ENV = {
     "FRESHRSS_HOST": "https://freshrss.example.test",
     "FRESHRSS_USER": "reader",
     "FRESHRSS_PASS": "secret",
-    "RSS_API_TOKEN": "api-test-token",
 }
+
+AUTH_TOKEN_VALUE = "api-test-token"
 
 
 class FakeResponse:
@@ -114,6 +115,7 @@ def test_health_endpoint_returns_json_over_http(test_client):
 def test_unread_rejects_unauthorized_requests_without_contacting_freshrss(
     test_client, monkeypatch, main_module, headers
 ):
+    main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE  # enable auth for this test
     monkeypatch.setattr(main_module, "get_greader_token", lambda: "unreachable")
 
     def unexpected_request(*args, **kwargs):
@@ -130,6 +132,7 @@ def test_unread_rejects_unauthorized_requests_without_contacting_freshrss(
 
 
 def test_unread_accepts_valid_credentials(test_client, monkeypatch, main_module):
+    main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE  # enable auth for this test
     calls = install_freshrss_transport(monkeypatch, main_module)
 
     response = test_client.get(
