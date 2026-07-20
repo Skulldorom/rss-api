@@ -20,6 +20,17 @@ The API provides interactive documentation at:
     - `n` (integer, default `10`) - Number of unread items to return
     - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
 
+## Testing
+
+Run the test suite with:
+
+```bash
+uv sync
+uv run pytest
+```
+
+GitHub Actions runs these tests for pull requests and before publishing the Docker image from `main`.
+
 Example of services.yaml:
 
 ```

@@ -47,6 +47,7 @@ dist/
 .eggs/
 
 # Testing and coverage
+tests/
 .coverage
 .coverage.*
 htmlcov/

@@ -48,7 +48,11 @@ def get_greader_token():
         "Email": FRESHRSS_USERNAME,
         "Passwd": FRESHRSS_PASSWORD,
     }
-    res = requests.post(login_url, data=payload, timeout=10)
+    try:
+        res = requests.post(login_url, data=payload, timeout=10)
+    except requests.RequestException as exc:
+        logging.warning("FreshRSS login request failed: %s", exc)
+        raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
     if res.status_code != 200:
         logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
         raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
@@ -77,12 +81,17 @@ def freshrss_unread(
         "output": "json",
         "n": n,
     }
-    stream_id = f"user/-/label/{category}" if category else "user/-/state/com.google/reading-list"
+    category_label = category if isinstance(category, str) and category else None
+    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
     # Using the same host as before but with the right endpoint
     url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
-    r = requests.get(url, headers=headers, params=params, timeout=10)
-    r.raise_for_status()
-    raw = r.json()
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        r.raise_for_status()
+        raw = r.json()
+    except requests.RequestException as exc:
+        logging.warning("FreshRSS unread request failed: %s", exc)
+        raise HTTPException(status_code=502, detail="FreshRSS unread request failed") from exc
     items = []
 
     now = datetime.now(timezone.utc)
@@ -93,12 +102,14 @@ def freshrss_unread(
             continue
         published_dt = datetime.fromtimestamp(published_ts, timezone.utc)
         published_str = humanize.naturaltime(now - published_dt)
+        alternates = entry.get("alternate") or []
+        item_url = alternates[0].get("href", "") if alternates else ""
         items.append(
             {
                 "title": entry.get("title"),
                 "feed": entry.get("origin", {}).get("title"),
                 "published": entry.get("published"),
-                "url": entry.get("alternate", [{}])[0].get("href", ""),
+                "url": item_url,
                 "display": f"{entry.get('title')} • {published_str}",
             }
         )
