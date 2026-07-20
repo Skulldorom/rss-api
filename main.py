@@ -1,10 +1,14 @@
 import logging
 import os
 import threading
+from urllib.parse import quote, urlsplit
+
 from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
 from datetime import datetime, timezone
+from math import isfinite
+from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, ValidationError, field_validator
 
 # Print ASCII skull
 skull = r"""
@@ -22,7 +26,7 @@ skull = r"""
             ⠄⠄⠂⠄⠄⠨⣔⡝⠼⡄⠂⣦⡆⣿⣲⠐⠑⠁⠄⠃
             ⠄⠄⠄⠄⠄⠄⠃⢫⢛⣙⡊⣜⣏⡝⣝⠆
             ⠄⠄⠄⠄⠄⠄⠈⠈⠁⠁⠁⠈⠈⠊
-            
+
             RSS api - Starting...
 """
 print(skull)
@@ -41,6 +45,62 @@ AUTH_TOKEN = None
 AUTH_TOKEN_LOCK = threading.Lock()
 
 
+class FreshRSSOrigin(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    title: str | None = None
+
+
+class FreshRSSAlternate(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    href: str | None = None
+
+
+class FreshRSSItem(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    title: str | None = None
+    origin: FreshRSSOrigin | None = None
+    published: StrictInt | StrictFloat | None = None
+    alternate: list[FreshRSSAlternate] | None = None
+
+    @field_validator("published")
+    @classmethod
+    def validate_published_timestamp(cls, value):
+        if value is None:
+            return value
+        try:
+            if not isfinite(value):
+                raise ValueError("timestamp must be finite")
+            datetime.fromtimestamp(value, timezone.utc)
+        except OverflowError:
+            raise ValueError("timestamp is outside the supported range")
+        except (OSError, ValueError) as exc:
+            raise ValueError("timestamp is outside the supported range") from exc
+        return value
+
+
+class FreshRSSResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore", strict=True)
+
+    items: list[FreshRSSItem]
+
+
+def validate_freshrss_response(raw):
+    """Validate FreshRSS data, rejecting the whole malformed response.
+
+    A response with any malformed item produces a sanitized 502 rather than a
+    partial result. This keeps upstream data-quality failures visible and gives
+    callers consistent all-or-nothing results.
+    """
+    try:
+        return FreshRSSResponse.model_validate(raw)
+    except ValidationError as exc:
+        logging.warning("FreshRSS returned an invalid unread response: %s", exc)
+        raise HTTPException(status_code=502, detail="FreshRSS returned an invalid unread response") from exc
+
+
 def get_greader_token():
     global AUTH_TOKEN
     with AUTH_TOKEN_LOCK:
@@ -57,7 +117,12 @@ def get_greader_token():
             logging.warning("FreshRSS login request failed: %s", exc)
             raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
         if res.status_code != 200:
-            logging.warning("FreshRSS login failed (status %d): %s", res.status_code, res.text)
+            upstream_host = urlsplit(FRESHRSS_HOST).hostname or "unknown"
+            logging.warning(
+                "FreshRSS login failed (status=%d, upstream_host=%s)",
+                res.status_code,
+                upstream_host,
+            )
             raise HTTPException(status_code=502, detail=f"FreshRSS login failed with status {res.status_code}")
         # Find and extract 'Auth=' line
         for line in res.text.splitlines():
@@ -75,8 +140,14 @@ def request_unread(token, n, category):
         "output": "json",
         "n": n,
     }
-    category_label = category if isinstance(category, str) and category else None
-    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
+    category_label = category.strip() if isinstance(category, str) else None
+    if category_label in (".", ".."):
+        category_label = None  # dot-only labels resolve as path traversal; use reading-list
+    stream_id = (
+        f"user/-/label/{quote(category_label, safe='')}"
+        if category_label
+        else "user/-/state/com.google/reading-list"
+    )
     url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
     return requests.get(url, headers=headers, params=params, timeout=10)
 
@@ -89,7 +160,7 @@ def health():
 @app.get("/freshrss/unread")
 def freshrss_unread(
     n: int = Query(default=10, ge=1, le=100),
-    category: str | None = Query(default=None),
+    category: str | None = Query(default=None, max_length=200),
 ):
     token = get_greader_token()
     try:
@@ -106,25 +177,26 @@ def freshrss_unread(
     except requests.RequestException as exc:
         logging.warning("FreshRSS unread request failed: %s", exc)
         raise HTTPException(status_code=502, detail="FreshRSS unread request failed") from exc
+    response = validate_freshrss_response(raw)
     items = []
 
     now = datetime.now(timezone.utc)
 
-    for entry in raw.get("items", []):
-        published_ts = entry.get("published")
+    for entry in response.items:
+        published_ts = entry.published
         if published_ts is None:
             continue
         published_dt = datetime.fromtimestamp(published_ts, timezone.utc)
         published_str = humanize.naturaltime(now - published_dt)
-        alternates = entry.get("alternate") or []
-        item_url = alternates[0].get("href", "") if alternates else ""
+        alternates = entry.alternate or []
+        item_url = alternates[0].href or "" if alternates else ""
         items.append(
             {
-                "title": entry.get("title"),
-                "feed": entry.get("origin", {}).get("title"),
-                "published": entry.get("published"),
+                "title": entry.title,
+                "feed": entry.origin.title if entry.origin else None,
+                "published": published_ts,
                 "url": item_url,
-                "display": f"{entry.get('title')} • {published_str}",
+                "display": f"{entry.title} • {published_str}",
             }
         )
     return items
