@@ -31,6 +31,13 @@ accepts all requests — convenient for trusted/internal networks. Set
 `RSS_API_TOKEN` to a long random secret to require an `Authorization: Bearer <token>`
 header on every protected endpoint. `/health` always remains unauthenticated.
 
+Generate a long random token with OpenSSL and save it in `.env`:
+
+```bash
+RSS_API_TOKEN=$(openssl rand -hex 32)
+printf 'RSS_API_TOKEN=%s\n' "$RSS_API_TOKEN" >> .env
+```
+
 ```bash
 # With auth enabled (token set):
 curl \
