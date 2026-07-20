@@ -248,6 +248,36 @@ def test_freshrss_unread_scopes_to_category_and_handles_missing_url(monkeypatch)
     assert result[0]["url"] == ""
 
 
+@pytest.mark.parametrize(
+    ("category", "expected_stream"),
+    [
+        ("  Tech News  ", "user/-/label/Tech%20News"),
+        ("Tech/News", "user/-/label/Tech%2FNews"),
+        ("100% News", "user/-/label/100%25%20News"),
+        ("What?", "user/-/label/What%3F"),
+        ("日本語", "user/-/label/%E6%97%A5%E6%9C%AC%E8%AA%9E"),
+        ("  \t\n ", "user/-/state/com.google/reading-list"),
+    ],
+)
+def test_freshrss_unread_normalizes_and_encodes_category(monkeypatch, category, expected_stream):
+    main = import_app(monkeypatch)
+    monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")
+    captured = {}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        return FakeResponse(payload={"items": []})
+
+    monkeypatch.setattr(main.requests, "get", fake_get)
+
+    main.freshrss_unread(category=category)
+
+    assert captured["url"] == (
+        "https://freshrss.example.test/api/greader.php/reader/api/0/stream/contents/"
+        f"{expected_stream}"
+    )
+
+
 def test_freshrss_unread_wraps_upstream_http_errors(monkeypatch):
     main = import_app(monkeypatch)
     monkeypatch.setattr(main, "get_greader_token", lambda: "token-123")

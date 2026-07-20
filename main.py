@@ -1,7 +1,8 @@
 import logging
 import os
 import threading
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
+
 from fastapi import FastAPI, HTTPException, Query
 import requests
 import humanize
@@ -81,8 +82,12 @@ def request_unread(token, n, category):
         "output": "json",
         "n": n,
     }
-    category_label = category if isinstance(category, str) and category else None
-    stream_id = f"user/-/label/{category_label}" if category_label else "user/-/state/com.google/reading-list"
+    category_label = category.strip() if isinstance(category, str) else None
+    stream_id = (
+        f"user/-/label/{quote(category_label, safe='')}"
+        if category_label
+        else "user/-/state/com.google/reading-list"
+    )
     url = f"{FRESHRSS_HOST}/api/greader.php/reader/api/0/stream/contents/{stream_id}"
     return requests.get(url, headers=headers, params=params, timeout=10)
 
@@ -95,7 +100,7 @@ def health():
 @app.get("/freshrss/unread")
 def freshrss_unread(
     n: int = Query(default=10, ge=1, le=100),
-    category: str | None = Query(default=None),
+    category: str | None = Query(default=None, max_length=200),
 ):
     token = get_greader_token()
     try:
