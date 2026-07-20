@@ -5,7 +5,7 @@ Simple API to fetch rss feeds for github releases using fresh rss (powered by Fa
 ![alt text](example/image.png)
 
 This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
-Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/) 
+Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/)
 
 ## API Documentation
 
@@ -17,27 +17,32 @@ The API provides interactive documentation at:
 
 - `GET /freshrss/unread` - Fetch unread RSS items from FreshRSS
   - Optional query parameters:
-    - `n` (integer, default `10`) - Number of unread items to return
+    - `n` (integer, default `10`, valid range `1`–`100`) - Number of unread items to return
     - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
 - `GET /health` - Container health endpoint (does not require authentication)
 
 ## Authentication
 
-Set the required `RSS_API_TOKEN` environment variable to a long, random secret. All
-endpoints that access FreshRSS require that secret as a bearer token; `/health`
-remains unauthenticated so container health checks continue to work.
+Bearer authentication is **optional**. When `RSS_API_TOKEN` is not set the API
+accepts all requests — convenient for trusted/internal networks. Set
+`RSS_API_TOKEN` to a long random secret to require an `Authorization: Bearer <token>`
+header on every protected endpoint. `/health` always remains unauthenticated.
 
 ```bash
+# With auth enabled (token set):
 curl \
-  -H "Authorization: Bearer ${RSS_API_TOKEN}" \
+  -H "Authorization: Bearer your-secret-token" \
   "http://localhost:5000/freshrss/unread?n=10&category=Tech"
+
+# Without auth (token not set):
+curl "http://localhost:5000/freshrss/unread?n=10&category=Tech"
 ```
 
-Clients such as Homepage must send the same header:
+When auth is enabled, clients such as Homepage must send the same header:
 
 ```yaml
 headers:
-  Authorization: Bearer your-rss-api-token
+  Authorization: Bearer your-secret-token
 ```
 
 ## Testing
@@ -63,7 +68,7 @@ Example of services.yaml:
               name: Unread RSS
               url: http://192.168.0.11:5000/freshrss/unread
               headers:
-                Authorization: Bearer your-rss-api-token
+                Authorization: Bearer your-secret-token
               display: dynamic-list
               mappings:
                 name: feed
@@ -72,23 +77,83 @@ Example of services.yaml:
 
 # Docker
 
-You can configure environment variables directly in `docker-compose.yml` instead of using a `.env` file. Default values are provided, but you can override them as needed:
+Copy the example environment file and set the required values:
 
-```
-environment:
-	FRESHRSS_USER: "user"
-	FRESHRSS_PASS: "password"
-	RSS_API_TOKEN: "replace-with-a-long-random-secret"
+```bash
+cp .env.example .env
 ```
 
-Edit these values in your `docker-compose.yml` to match your setup.
+`FRESHRSS_HOST` must be a URL that is reachable **from the API container**. Do
+not use `localhost`: inside the container that name refers to the API container
+itself, not FreshRSS. Compose validates `FRESHRSS_HOST`, `FRESHRSS_USER`, and
+`FRESHRSS_PASS` before creating the container, so an unset or empty value
+produces a clear configuration error instead of entering a restart loop.
+
+Choose one of the following host configurations.
+
+### FreshRSS in the same Compose project
+
+When FreshRSS is a service on the same Compose network, use its service name.
+For example, if the service is named `freshrss`:
+
+```yaml
+services:
+  freshrss:
+    image: freshrss/freshrss:latest
+    # Add the FreshRSS volumes and other settings required by your deployment.
+
+  custom-api:
+    image: ghcr.io/skulldorom/rss-api:latest
+    environment:
+      FRESHRSS_HOST: http://freshrss
+      FRESHRSS_USER: ${FRESHRSS_USER:?Set FRESHRSS_USER in .env}
+      FRESHRSS_PASS: ${FRESHRSS_PASS:?Set FRESHRSS_PASS in .env}
+```
+
+Equivalently, keep the provided Compose file and set this in `.env`:
+
+```dotenv
+FRESHRSS_HOST=http://freshrss
+```
+
+### FreshRSS on the Docker Desktop host
+
+Docker Desktop provides `host.docker.internal` for reaching a service exposed
+by the host. If FreshRSS is published on host port `8020`, use:
+
+```dotenv
+FRESHRSS_HOST=http://host.docker.internal:8020
+```
+
+### FreshRSS on a Linux host
+
+On Linux, set the host's address explicitly (replace the example address with
+one reachable from Docker):
+
+```dotenv
+FRESHRSS_HOST=http://192.168.1.10:8020
+```
+
+Alternatively, map Docker's host gateway in `docker-compose.yml` and then use
+the same hostname as the Docker Desktop example:
+
+```yaml
+services:
+  custom-api:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+```dotenv
+FRESHRSS_HOST=http://host.docker.internal:8020
+```
 
 ## Running with Docker Compose
 
 You can run the API using the pre-built image from GitHub Container Registry:
 
 ```bash
-docker-compose up
+docker compose up
 ```
 
 This uses the image `ghcr.io/skulldorom/rss-api:latest`.
