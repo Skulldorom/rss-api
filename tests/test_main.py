@@ -360,7 +360,7 @@ def test_unread_fails_after_single_reauthentication_retry(
     response = test_client.get("/freshrss/unread")
 
     assert response.status_code == 502
-    assert response.json() == {"detail": "FreshRSS unread request failed"}
+    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
     assert get_calls == [
         "GoogleLogin auth=expired-token",
         "GoogleLogin auth=fresh-token",
