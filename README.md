@@ -3,6 +3,10 @@
 [![Tests](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml)
 [![Docker](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml)
 
+<p align="center">
+  <a href="https://ko-fi.com/skulldorom"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" /></a>
+</p>
+
 Simple API to fetch rss feeds for github releases using fresh rss (powered by FastAPI)
 
 ![alt text](example/image.png)
