@@ -86,10 +86,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          current_main_sha() {
+            gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha'
+          }
+          main_sha=$(current_main_sha)
           if [[ "$main_sha" != "$TESTED_SHA" ]]; then
             echo "Skipping latest: $TESTED_SHA is no longer the tip of main."
             exit 0
           fi
           docker buildx imagetools create --prefer-index=false \
             --tag "$IMAGE:latest" "$IMAGE:$TESTED_SHA"
+          if ! main_sha=$(current_main_sha); then
+            echo "::error::Updated latest to $TESTED_SHA but could not recheck the tip of main."
+            exit 1
+          fi
+          if [[ "$main_sha" != "$TESTED_SHA" ]]; then
+            echo "::warning::main advanced to $main_sha while updating latest to $TESTED_SHA. The current tip needs a successful CI and publish run."
+          fi

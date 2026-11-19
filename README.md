@@ -141,8 +141,10 @@ FreshRSS instance.
 The Docker workflow accepts only successful CI runs from pushes to this
 repository's `main`. It checks out the tested commit and publishes
 `ghcr.io/skulldorom/rss-api:<commit-sha>`. A rerun reuses an existing commit
-image. Publishing jobs run one at a time, and a job only updates `latest`
-if its tested commit is still at the tip of `main` at promotion time.
+image. Publishing jobs run one at a time and check that the tested commit is
+still at the tip of `main` before updating `latest`. If `main` advances during
+the registry update, the workflow warns that `latest` may lag until the
+current tip passes CI and publishes.
 
 If a branch rule requires the old workflow, verify the required check against
 the first pull request that shows the new **CI** workflow. The job name

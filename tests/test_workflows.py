@@ -57,16 +57,18 @@ def test_docker_publishes_only_the_verified_main_push():
 
 
 @pytest.mark.parametrize(
-    ("main_lookup", "expect_promotion", "exit_code"),
+    ("before", "after", "expect_promotion", "exit_code", "diagnostic"),
     [
-        ('printf "%s\\n" "$TESTED_SHA"', True, 0),
-        ('printf "%s\\n" "newer-commit"', False, 0),
-        ("exit 1", False, 1),
+        ("current", "current", True, 0, ""),
+        ("newer", "unused", False, 0, "Skipping latest"),
+        ("failed", "unused", False, 1, ""),
+        ("current", "newer", True, 0, "::warning::main advanced to " + "b" * 40),
+        ("current", "failed", True, 1, "could not recheck the tip of main"),
     ],
-    ids=["current", "stale", "lookup-failed"],
+    ids=["current", "stale", "lookup-failed", "advanced-during-promotion", "recheck-failed"],
 )
-def test_latest_promotion_uses_tested_tag_only_if_main_is_current(
-    tmp_path, main_lookup, expect_promotion, exit_code
+def test_latest_promotion_checks_main_before_and_after_registry_update(
+    tmp_path, before, after, expect_promotion, exit_code, diagnostic
 ):
     job = load_workflow("docker.yml")["jobs"]["build-push"]
     step = next(
@@ -80,16 +82,32 @@ def test_latest_promotion_uses_tested_tag_only_if_main_is_current(
     if not bash:
         pytest.skip("Bash is needed to run the GitHub Actions shell step")
 
-    fake_commands = (
-        f"gh() {{ {main_lookup}; }}\n"
-        'docker() { printf "%s\\n" "$@" > docker-args; }\n'
-    )
+    fake_commands = """
+gh() {
+    local result=$BEFORE
+    if [[ -f docker-args ]]; then
+        result=$AFTER
+    fi
+    echo "$result" >> main-lookups
+    case "$result" in
+        current) echo "$TESTED_SHA" ;;
+        newer) echo "$NEW_SHA" ;;
+        *) return 1 ;;
+    esac
+}
+docker() {
+    printf "%s\\n" "$@" > docker-args
+}
+"""
     result = subprocess.run(
         [bash, "-e", "-o", "pipefail", "-c", fake_commands + step["run"]],
         cwd=tmp_path,
         env={
             **os.environ,
+            "BEFORE": before,
+            "AFTER": after,
             "TESTED_SHA": tested_sha,
+            "NEW_SHA": "b" * 40,
             "IMAGE": image,
             "GITHUB_REPOSITORY": "example/rss-api",
         },
@@ -99,6 +117,13 @@ def test_latest_promotion_uses_tested_tag_only_if_main_is_current(
     )
 
     assert result.returncode == exit_code, result.stderr
+    if diagnostic:
+        assert diagnostic in result.stdout
+    else:
+        assert result.stdout == ""
+    assert (tmp_path / "main-lookups").read_text().splitlines() == (
+        [before, after] if expect_promotion else [before]
+    )
     docker_args = tmp_path / "docker-args"
     assert docker_args.exists() == expect_promotion
     if expect_promotion:
