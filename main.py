@@ -109,7 +109,10 @@ def validate_freshrss_response(raw):
     try:
         return FreshRSSResponse.model_validate(raw)
     except ValidationError as exc:
-        logging.warning("FreshRSS returned an invalid unread response: %s", exc)
+        logging.warning(
+            "FreshRSS returned an invalid unread response (%d validation errors)",
+            exc.error_count(),
+        )
         raise HTTPException(status_code=502, detail="FreshRSS returned an invalid unread response") from exc
 
 
@@ -124,7 +127,9 @@ def require_api_token(
     """
     if not RSS_API_TOKEN:
         return  # auth is disabled
-    if credentials is None or not secrets.compare_digest(credentials.credentials, RSS_API_TOKEN):
+    if credentials is None or not secrets.compare_digest(
+        credentials.credentials.encode(), RSS_API_TOKEN.encode()
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API token",
@@ -145,7 +150,7 @@ def get_greader_token():
         try:
             res = requests.post(login_url, data=payload, timeout=10)
         except requests.RequestException as exc:
-            logging.warning("FreshRSS login request failed: %s", exc)
+            logging.warning("FreshRSS login request failed (%s)", type(exc).__name__)
             raise HTTPException(status_code=502, detail="FreshRSS login request failed") from exc
         if res.status_code != 200:
             upstream_host = urlsplit(FRESHRSS_HOST).hostname or "unknown"
@@ -206,7 +211,7 @@ def freshrss_unread(
         r.raise_for_status()
         raw = r.json()
     except requests.RequestException as exc:
-        logging.warning("FreshRSS unread request failed: %s", exc)
+        logging.warning("FreshRSS unread request failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="FreshRSS unread request failed") from exc
     response = validate_freshrss_response(raw)
     items = []

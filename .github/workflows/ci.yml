@@ -1,16 +1,22 @@
-name: Test
+name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -26,4 +32,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run --frozen pytest
+
+      - name: Validate Compose configuration
+        run: docker compose --env-file .env.example config --quiet

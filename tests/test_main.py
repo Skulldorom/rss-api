@@ -39,11 +39,21 @@ class FakeResponse:
             raise self._raise_error
 
 
+def response_from_freshrss(status_code, content=b""):
+    """Use Requests' actual HTTP status and JSON handling for failure tests."""
+    response = requests.Response()
+    response.status_code = status_code
+    response.url = "https://freshrss.example.test/api/greader.php"
+    response._content = content
+    return response
+
+
 @pytest.fixture
 def main_module(monkeypatch):
     """Import the application only after installing a deterministic environment."""
     for name, value in REQUIRED_ENV.items():
         monkeypatch.setenv(name, value)
+    monkeypatch.delenv("RSS_API_TOKEN", raising=False)
     sys.modules.pop("main", None)
     module = importlib.import_module("main")
     yield module
@@ -109,14 +119,20 @@ def test_health_endpoint_returns_json_over_http(test_client):
 
 @pytest.mark.parametrize(
     "headers",
-    [{}, {"Authorization": "Bearer wrong-token"}],
-    ids=["missing", "invalid"],
+    [
+        {},
+        {"Authorization": "Bearer wrong-token"},
+        {"Authorization": "Bearer"},
+        {"Authorization": "Basic api-test-token"},
+        {"Authorization": "Bearer too many parts"},
+        {b"Authorization": b"Bearer \xff"},
+    ],
+    ids=["missing", "wrong-token", "no-token", "wrong-scheme", "extra-parts", "non-ascii"],
 )
 def test_unread_rejects_unauthorized_requests_without_contacting_freshrss(
     test_client, monkeypatch, main_module, headers
 ):
     main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE  # enable auth for this test
-    monkeypatch.setattr(main_module, "get_greader_token", lambda: "unreachable")
 
     def unexpected_request(*args, **kwargs):
         pytest.fail("unauthorized requests must not contact FreshRSS")
@@ -147,10 +163,8 @@ def test_unread_accepts_valid_credentials(test_client, monkeypatch, main_module)
 
 def test_unread_allows_requests_when_token_not_configured(monkeypatch):
     """When RSS_API_TOKEN is unset, auth is skipped entirely."""
-    env_without_token = {k: v for k, v in REQUIRED_ENV.items() if k != "RSS_API_TOKEN"}
-    for name in REQUIRED_ENV:
-        monkeypatch.delenv(name, raising=False)
-    for name, value in env_without_token.items():
+    monkeypatch.delenv("RSS_API_TOKEN", raising=False)
+    for name, value in REQUIRED_ENV.items():
         monkeypatch.setenv(name, value)
     sys.modules.pop("main", None)
     module = importlib.import_module("main")
@@ -250,7 +264,7 @@ def test_freshrss_unread_normalizes_and_encodes_category(
     )
 
 
-@pytest.mark.parametrize("value", ["not-a-number", "1.5", "", "0", "-1"])
+@pytest.mark.parametrize("value", ["not-a-number", "1.5", "", "0", "-1", "101"])
 def test_unread_rejects_invalid_counts_without_contacting_upstream(
     value, test_client, monkeypatch, main_module
 ):
@@ -387,8 +401,9 @@ def test_get_greader_token_wraps_request_failures(monkeypatch, main_module):
 # ── Reauthentication ──────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize("expired_status", [401, 403])
 def test_unread_reauthenticates_and_retries_once(
-    test_client, monkeypatch, main_module
+    test_client, monkeypatch, main_module, expired_status
 ):
     main_module.AUTH_TOKEN = "expired-token"
     login_calls = []
@@ -401,8 +416,8 @@ def test_unread_reauthenticates_and_retries_once(
     def fake_get(url, headers, params, timeout):
         get_calls.append(headers["Authorization"])
         if len(get_calls) == 1:
-            return FakeResponse(status_code=401)
-        return FakeResponse(payload={"items": []})
+            return response_from_freshrss(expired_status)
+        return response_from_freshrss(200, b'{"items": []}')
 
     monkeypatch.setattr(main_module.requests, "post", fake_post)
     monkeypatch.setattr(main_module.requests, "get", fake_get)
@@ -419,8 +434,9 @@ def test_unread_reauthenticates_and_retries_once(
     assert main_module.AUTH_TOKEN == "fresh-token"
 
 
+@pytest.mark.parametrize("expired_status", [401, 403])
 def test_unread_fails_after_single_reauthentication_retry(
-    test_client, monkeypatch, main_module
+    test_client, monkeypatch, main_module, expired_status
 ):
     main_module.AUTH_TOKEN = "expired-token"
     get_calls = []
@@ -432,14 +448,14 @@ def test_unread_fails_after_single_reauthentication_retry(
 
     def fake_get(url, headers, params, timeout):
         get_calls.append(headers["Authorization"])
-        return FakeResponse(status_code=403)
+        return response_from_freshrss(expired_status)
 
     monkeypatch.setattr(main_module.requests, "get", fake_get)
 
     response = test_client.get("/freshrss/unread")
 
     assert response.status_code == 502
-    assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+    assert response.json() == {"detail": "FreshRSS unread request failed"}
     assert get_calls == [
         "GoogleLogin auth=expired-token",
         "GoogleLogin auth=fresh-token",
@@ -616,3 +632,200 @@ def test_unread_rejects_timestamp_overflowing_isfinite(
 
     assert response.status_code == 502
     assert response.json() == {"detail": "FreshRSS returned an invalid unread response"}
+
+
+@pytest.mark.parametrize("missing", REQUIRED_ENV)
+def test_import_rejects_each_blank_required_setting_without_exposing_credentials(
+    monkeypatch, capsys, missing
+):
+    for name in REQUIRED_ENV:
+        monkeypatch.setenv(name, "" if name == missing else f"sentinel-{name}")
+    monkeypatch.setenv("RSS_API_TOKEN", "sentinel-bearer-token")
+    sys.modules.pop("main", None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        importlib.import_module("main")
+
+    assert str(excinfo.value) == f"Missing required environment variables: {missing}"
+    captured = capsys.readouterr()
+    assert "sentinel-" not in captured.out + captured.err
+
+
+def test_health_bypasses_bearer_auth_without_upstream_calls(
+    test_client, monkeypatch, main_module
+):
+    main_module.RSS_API_TOKEN = AUTH_TOKEN_VALUE
+    calls = install_freshrss_transport(monkeypatch, main_module)
+
+    response = test_client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert calls == {"post": [], "get": []}
+
+
+@pytest.mark.parametrize("count", [1, 100])
+def test_unread_accepts_count_boundaries_and_max_category(
+    test_client, monkeypatch, main_module, count
+):
+    calls = install_freshrss_transport(monkeypatch, main_module)
+    label = "a" * 200
+
+    response = test_client.get("/freshrss/unread", params={"n": count, "category": label})
+
+    assert response.status_code == 200
+    assert calls["get"][0]["params"]["n"] == count
+    assert calls["get"][0]["url"].endswith(f"/user/-/label/{label}")
+
+
+def test_unread_rejects_overlong_category_without_upstream_calls(
+    test_client, monkeypatch, main_module
+):
+    calls = install_freshrss_transport(monkeypatch, main_module)
+
+    response = test_client.get("/freshrss/unread", params={"category": "a" * 201})
+
+    assert response.status_code == 422
+    assert calls == {"post": [], "get": []}
+
+
+@pytest.mark.parametrize(
+    "failure", [requests.Timeout, requests.ConnectionError, "invalid-json", "invalid-shape"]
+)
+def test_unread_sanitizes_transport_and_response_failures(
+    test_client, monkeypatch, main_module, caplog, failure
+):
+    main_module.AUTH_TOKEN = "sentinel-greader-token"
+    main_module.FRESHRSS_PASSWORD = "sentinel-freshrss-password"
+    main_module.RSS_API_TOKEN = "sentinel-api-token"
+    secrets = (main_module.AUTH_TOKEN, main_module.FRESHRSS_PASSWORD, main_module.RSS_API_TOKEN)
+    unsafe_detail = " ".join(secrets)
+
+    def fake_get(*args, **kwargs):
+        if failure == "invalid-json":
+            return response_from_freshrss(200, f"<html>{unsafe_detail}</html>".encode())
+        if failure == "invalid-shape":
+            return response_from_freshrss(200, f'{{"items": "{unsafe_detail}"}}'.encode())
+        raise failure(unsafe_detail)
+
+    monkeypatch.setattr(main_module.requests, "get", fake_get)
+
+    response = test_client.get(
+        "/freshrss/unread", headers={"Authorization": f"Bearer {main_module.RSS_API_TOKEN}"}
+    )
+
+    assert response.status_code == 502
+    detail = (
+        "FreshRSS returned an invalid unread response"
+        if failure == "invalid-shape"
+        else "FreshRSS unread request failed"
+    )
+    assert response.json() == {"detail": detail}
+    assert detail in caplog.text
+    for secret in secrets:
+        assert secret not in response.text
+        assert secret not in caplog.text
+
+
+def test_login_transport_failure_sanitizes_response_and_logs(
+    test_client, monkeypatch, main_module, caplog
+):
+    def fake_post(url, data, timeout):
+        raise requests.ConnectionError(f"Login failed with {data['Passwd']}")
+
+    main_module.FRESHRSS_PASSWORD = "sentinel-api-password"
+    monkeypatch.setattr(main_module.requests, "post", fake_post)
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "FreshRSS login request failed"}
+    assert "ConnectionError" in caplog.text
+    assert main_module.FRESHRSS_PASSWORD not in response.text + caplog.text
+
+
+def test_unread_reuses_token_refreshed_by_another_request(
+    test_client, monkeypatch, main_module
+):
+    main_module.AUTH_TOKEN = "expired-token"
+    expired_request_started = threading.Event()
+    fresh_token_used = threading.Event()
+    login_calls = []
+    get_calls = []
+
+    def fake_post(*args, **kwargs):
+        login_calls.append(1)
+        return FakeResponse(text="Auth=fresh-token")
+
+    def fake_get(url, headers, params, timeout):
+        token = headers["Authorization"]
+        get_calls.append((params["n"], token))
+        if token == "GoogleLogin auth=expired-token":
+            if params["n"] == 1:
+                expired_request_started.set()
+                assert fresh_token_used.wait(timeout=5)
+            return response_from_freshrss(401)
+        fresh_token_used.set()
+        return response_from_freshrss(200, b'{"items": []}')
+
+    monkeypatch.setattr(main_module.requests, "post", fake_post)
+    monkeypatch.setattr(main_module.requests, "get", fake_get)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        delayed = pool.submit(test_client.get, "/freshrss/unread?n=1")
+        assert expired_request_started.wait(timeout=5)
+        refreshing = pool.submit(test_client.get, "/freshrss/unread?n=2")
+        assert refreshing.result(timeout=5).status_code == 200
+        assert delayed.result(timeout=5).status_code == 200
+
+    assert main_module.AUTH_TOKEN == "fresh-token"
+    assert len(login_calls) == 1
+    assert get_calls == [
+        (1, "GoogleLogin auth=expired-token"),
+        (2, "GoogleLogin auth=expired-token"),
+        (2, "GoogleLogin auth=fresh-token"),
+        (1, "GoogleLogin auth=fresh-token"),
+    ]
+
+
+def test_unread_preserves_optional_fields_in_homepage_output(
+    test_client, monkeypatch, main_module
+):
+    monkeypatch.setattr(main_module.humanize, "naturaltime", lambda age: "some time ago")
+    install_freshrss_transport(
+        monkeypatch,
+        main_module,
+        payload={
+            "items": [
+                {"published": 1700000000},
+                {
+                    "title": "No link",
+                    "origin": {},
+                    "alternate": [{}, {"href": "https://example.test/second"}],
+                    "published": 1700000001,
+                },
+                {"title": "Missing timestamp"},
+                {"title": "Null timestamp", "published": None},
+            ]
+        },
+    )
+
+    response = test_client.get("/freshrss/unread")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "title": None,
+            "feed": None,
+            "url": "",
+            "published": 1700000000,
+            "display": "None • some time ago",
+        },
+        {
+            "title": "No link",
+            "feed": None,
+            "url": "",
+            "published": 1700000001,
+            "display": "No link • some time ago",
+        },
+    ]

@@ -1,4 +1,3 @@
-version: "3"
 services:
   custom-api:
     image: ghcr.io/skulldorom/rss-api:latest

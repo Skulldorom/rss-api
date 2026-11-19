@@ -2,24 +2,45 @@ name: Docker image
 
 on:
   workflow_run:
-    workflows: ["Test"]
+    workflows: ["CI"]
     types: [completed]
     branches: [main]
 
+permissions: {}
+
 jobs:
   build-push:
-    if: github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.path == '.github/workflows/ci.yml' &&
+      github.event.workflow_run.head_repository.id == github.event.repository.id
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: read
       packages: write
-      id-token: write
+    # Serialize tag writes and preserve queued runs even if CI finishes out of order.
+    concurrency:
+      group: publish-docker-main
+      cancel-in-progress: false
+      queue: max
+    env:
+      TESTED_SHA: ${{ github.event.workflow_run.head_sha }}
     steps:
-      - name: Checkout code
+      - name: Checkout tested commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TESTED_SHA }}
+          persist-credentials: false
 
-      - name: Set lowercase repository name
-        run: echo "REPO_LC=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+      - name: Verify source and set image name
+        run: |
+          test "$(git rev-parse HEAD)" = "$TESTED_SHA"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -29,16 +50,46 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ github.token }}
 
-      - name: Build and push Docker image
+      - name: Check whether the commit image already exists
+        id: commit-image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          token=$(curl --fail --silent --show-error --user "$GITHUB_ACTOR:$GH_TOKEN" \
+            --get --data-urlencode "scope=repository:${IMAGE#ghcr.io/}:pull" \
+            https://ghcr.io/token | jq -er '.token | select(length > 0)')
+          echo "::add-mask::$token"
+          status=$(curl --silent --show-error --head --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/${IMAGE#ghcr.io/}/manifests/$TESTED_SHA")
+          case "$status" in
+            200) echo "missing=false" >> "$GITHUB_OUTPUT" ;;
+            404) echo "missing=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Could not check the commit image in GHCR (HTTP $status)"; exit 1 ;;
+          esac
+
+      - name: Build and push commit image
+        if: steps.commit-image.outputs.missing == 'true'
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ env.REPO_LC }}:${{ github.sha }}
-            ghcr.io/${{ env.REPO_LC }}:latest
-          cache-from: type=registry,ref=ghcr.io/${{ env.REPO_LC }}:latest
+          tags: ${{ env.IMAGE }}:${{ env.TESTED_SHA }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:latest
           cache-to: type=inline
           provenance: false
+
+      - name: Promote current main to latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ "$main_sha" != "$TESTED_SHA" ]]; then
+            echo "Skipping latest: $TESTED_SHA is no longer the tip of main."
+            exit 0
+          fi
+          docker buildx imagetools create --prefer-index=false \
+            --tag "$IMAGE:latest" "$IMAGE:$TESTED_SHA"
