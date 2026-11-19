@@ -1,181 +1,67 @@
 # rss-api
 
-[![Tests](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/test.yml)
+[![CI](https://github.com/Skulldorom/rss-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/ci.yml)
 [![Docker](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml/badge.svg)](https://github.com/Skulldorom/rss-api/actions/workflows/docker.yml)
 
 <p align="center">
   <a href="https://ko-fi.com/skulldorom"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" /></a>
 </p>
 
-Simple API to fetch rss feeds for github releases using fresh rss (powered by FastAPI)
+A small FastAPI proxy for the FreshRSS Google Reader API. It returns unread
+items as a JSON list for [Homepage's Custom API widget](https://gethomepage.dev/widgets/services/customapi/).
+Subscribe to feeds such as GitHub releases in FreshRSS, then use the widget
+to see their unread items on your dashboard.
 
-![alt text](example/image.png)
+![Unread feed items displayed in Homepage](example/image.png)
 
-This allows you to easily integrate it with [https://gethomepage.dev/](https://gethomepage.dev/)
-Using their [Custom API integration](https://gethomepage.dev/widgets/services/customapi/)
+## Docker Compose quick start
 
-## API Documentation
+1. [Enable API access in FreshRSS](https://freshrss.github.io/FreshRSS/en/users/06_Mobile_access.html)
+   under **Authentication** and set an **API password** in the FreshRSS user's profile.
+2. Clone the repository and copy the example environment file.
 
-The API provides interactive documentation at:
+   ```sh
+   git clone https://github.com/Skulldorom/rss-api.git
+   cd rss-api
+   cp .env.example .env
+   ```
 
-- Swagger UI: `http://localhost:5000/docs`
-- ReDoc: `http://localhost:5000/redoc`
+3. Edit `.env` using the settings below.
+4. Start the API and check that it responds.
 
-## Available Endpoints
+   ```sh
+   docker compose up -d
+   curl --fail http://localhost:5000/health
+   ```
 
-- `GET /freshrss/unread` - Fetch unread RSS items from FreshRSS
-  - Optional query parameters:
-    - `n` (integer, default `10`, valid range `1`–`100`) - Number of unread items to return
-    - `category` (string) - FreshRSS category label to scope unread items, e.g. `/freshrss/unread?category=Tech`
-- `GET /health` - Container health endpoint (does not require authentication)
+| Variable | Required | Value |
+| --- | --- | --- |
+| `FRESHRSS_HOST` | Yes | FreshRSS base URL as seen from the API container. Include any deployment subpath before `/api/greader.php` and omit the trailing slash. |
+| `FRESHRSS_USER` | Yes | FreshRSS username. |
+| `FRESHRSS_PASS` | Yes | API/GReader password from the FreshRSS profile, separate from the web login password. |
+| `RSS_API_TOKEN` | No | Bearer token clients send to rss-api. Generate one with `openssl rand -hex 32` and replace the example value in `.env`. |
 
-## Authentication
+Compose and app startup both require nonempty FreshRSS settings. Keep the API
+on a trusted network if `RSS_API_TOKEN` is blank or omitted, since anyone who
+can reach the service can then fetch unread items. The supplied Compose file
+publishes port 5000 on the host.
 
-Bearer authentication is **optional**. When `RSS_API_TOKEN` is not set the API
-accepts all requests — convenient for trusted/internal networks. Set
-`RSS_API_TOKEN` to a long random secret to require an `Authorization: Bearer <token>`
-header on every protected endpoint. `/health` always remains unauthenticated.
+### Choosing the FreshRSS URL
 
-Generate a long random token with OpenSSL and save it in `.env`:
+| FreshRSS location | Example `FRESHRSS_HOST` |
+| --- | --- |
+| Service named `freshrss` on a network shared with `custom-api` | `http://freshrss` |
+| Docker Desktop host with FreshRSS published on port 8020 | `http://host.docker.internal:8020` |
+| Linux host with FreshRSS published on port 8020 | `http://192.168.1.10:8020` using the host's reachable IP |
+| Reachable FreshRSS reverse proxy | `https://rss.example.com` |
 
-```bash
-RSS_API_TOKEN=$(openssl rand -hex 32)
-printf 'RSS_API_TOKEN=%s\n' "$RSS_API_TOKEN" >> .env
-```
+Inside the API container, `localhost` points to rss-api itself. If FreshRSS
+and rss-api run in separate Compose projects, attach both services to the
+same Docker network to use the FreshRSS service name, or use a reachable
+published address.
 
-```bash
-# With auth enabled (token set):
-curl \
-  -H "Authorization: Bearer <token>" \
-  "http://localhost:5000/freshrss/unread?n=10&category=Tech"
-
-# Without auth (token not set):
-curl "http://localhost:5000/freshrss/unread?n=10&category=Tech"
-```
-
-When auth is enabled, clients such as Homepage must send the same header:
-
-```yaml
-headers:
-  Authorization: Bearer <token>
-```
-
-## Testing
-
-Run the test suite with:
-
-```bash
-uv sync
-uv run pytest
-```
-
-GitHub Actions runs these tests for pull requests and before publishing the Docker image from `main`.
-
-Example of services.yaml:
-
-```yaml
-- Updates:
-    icon: github.png
-    href: http://192.168.0.11:5000
-    siteMonitor: http://192.168.0.11:5000/freshrss/unread
-    widget:
-      type: customapi
-      name: Unread RSS
-      url: http://192.168.0.11:5000/freshrss/unread
-      headers:
-        Authorization: Bearer <token>
-      display: dynamic-list
-      mappings:
-        name: feed
-        label: display
-```
-
-# Docker
-
-Copy the example environment file and set the required values:
-
-```bash
-cp .env.example .env
-```
-
-Configure these environment variables in `.env` or your Compose environment:
-
-| Variable        | Required | Default if unset                   | Description                                                                                                                                                                                            |
-| --------------- | -------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `FRESHRSS_HOST` | Yes      | No default; app startup fails.     | FreshRSS base URL reachable from the API container. The example `.env` uses `http://freshrss` for a same-network Compose service.                                                                      |
-| `FRESHRSS_USER` | Yes      | No default; app startup fails.     | FreshRSS username used for Google Reader API login.                                                                                                                                                    |
-| `FRESHRSS_PASS` | Yes      | No default; app startup fails.     | FreshRSS API/GReader password used for Google Reader API login. This is **not** the normal FreshRSS web UI password. Create or set the API password in FreshRSS user settings and use that value here. |
-| `RSS_API_TOKEN` | No       | Empty/unset; bearer auth disabled. | Optional bearer token for this API. When set, protected endpoints require `Authorization: Bearer <token>`.                                                                                             |
-
-`FRESHRSS_HOST` must be a URL that is reachable **from the API container**. Do
-not use `localhost`: inside the container that name refers to the API container
-itself, not FreshRSS. Compose validates `FRESHRSS_HOST`, `FRESHRSS_USER`, and
-`FRESHRSS_PASS` before creating the container, so an unset or empty value
-produces a clear configuration error instead of entering a restart loop.
-
-> [!IMPORTANT]
-> `FRESHRSS_PASS` must be the FreshRSS API/GReader password, not your normal
-> FreshRSS web login password. FreshRSS stores these separately. If you use the
-> web login password here, FreshRSS may reject the login with `401` and log
-> `Password API mismatch for user <username>`.
-
-`RSS_API_TOKEN` is different from `FRESHRSS_PASS`:
-
-| Value           | Used by              | Purpose                                                                                      |
-| --------------- | -------------------- | -------------------------------------------------------------------------------------------- |
-| `FRESHRSS_PASS` | `rss-api` → FreshRSS | Logs into FreshRSS through the Google Reader API. Must be the FreshRSS API/GReader password. |
-| `RSS_API_TOKEN` | Client → `rss-api`   | Protects this API's endpoints with bearer authentication. Optional.                          |
-
-Choose one of the following host configurations.
-
-### FreshRSS in the same Compose project
-
-When FreshRSS is a service on the same Compose network, use its service name.
-For example, if the service is named `freshrss`:
-
-```yaml
-services:
-  freshrss:
-    image: freshrss/freshrss:latest
-    # Add the FreshRSS volumes and other settings required by your deployment.
-
-  custom-api:
-    image: ghcr.io/skulldorom/rss-api:latest
-    environment:
-      FRESHRSS_HOST: http://freshrss
-      FRESHRSS_USER: ${FRESHRSS_USER:?Set FRESHRSS_USER in .env}
-      # Must be the FreshRSS API/GReader password, not the web UI password.
-      FRESHRSS_PASS: ${FRESHRSS_PASS:?Set FRESHRSS_PASS in .env}
-      # Optional: require Authorization: Bearer <token> on protected endpoints.
-      RSS_API_TOKEN: ${RSS_API_TOKEN:-}
-```
-
-Equivalently, keep the provided Compose file and set this in `.env`:
-
-```dotenv
-FRESHRSS_HOST=http://freshrss
-```
-
-### FreshRSS on the Docker Desktop host
-
-Docker Desktop provides `host.docker.internal` for reaching a service exposed
-by the host. If FreshRSS is published on host port `8020`, use:
-
-```dotenv
-FRESHRSS_HOST=http://host.docker.internal:8020
-```
-
-### FreshRSS on a Linux host
-
-On Linux, set the host's address explicitly (replace the example address with
-one reachable from Docker):
-
-```dotenv
-FRESHRSS_HOST=http://192.168.1.10:8020
-```
-
-Alternatively, map Docker's host gateway in `docker-compose.yml` and then use
-the same hostname as the Docker Desktop example:
+On Linux you can also set `FRESHRSS_HOST=http://host.docker.internal:8020`
+with this addition to the existing `custom-api` service:
 
 ```yaml
 services:
@@ -184,60 +70,83 @@ services:
       - "host.docker.internal:host-gateway"
 ```
 
-```dotenv
-FRESHRSS_HOST=http://host.docker.internal:8020
+## API
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /health` | Returns `{"status":"ok"}` without authentication or an upstream request. |
+| `GET /freshrss/unread` | Returns a JSON list with `title`, `feed`, `published` (Unix seconds), `url`, and `display` (title and relative age). Items without a publication time are skipped. |
+
+For `/freshrss/unread`, `n` sets the upstream item limit (integer from 1 to
+100, default 10). The optional `category` is a FreshRSS category label of up
+to 200 characters. Omit it for the full unread reading list. Invalid query
+parameters return HTTP 422.
+
+```sh
+curl --fail --get 'http://localhost:5000/freshrss/unread' \
+  --header 'Authorization: Bearer YOUR_RSS_API_TOKEN' \
+  --data-urlencode 'n=10' \
+  --data-urlencode 'category=Tech News'
 ```
 
-## Troubleshooting
+Replace `YOUR_RSS_API_TOKEN` with the configured token. Omit the header if
+bearer auth is disabled. With auth enabled, missing or invalid credentials
+return HTTP 401. Swagger UI is available at `/docs` and ReDoc at `/redoc`.
 
-### FreshRSS login fails with status 401
+## Homepage
 
-If API requests fail with:
+Add this group to Homepage's `services.yaml`. Use an address reachable from
+the Homepage container and the same bearer token you set in rss-api. Remove
+the `headers` block if bearer auth is disabled.
 
-```text
-FreshRSS login failed with status 401
+```yaml
+- Feeds:
+    - FreshRSS:
+        href: https://rss.example.com
+        siteMonitor: http://192.168.1.10:5000/health
+        widget:
+          type: customapi
+          url: http://192.168.1.10:5000/freshrss/unread?n=10
+          headers:
+            Authorization: "Bearer YOUR_RSS_API_TOKEN"
+          display: dynamic-list
+          mappings:
+            name: feed
+            label: display
 ```
 
-and FreshRSS logs show:
+## Troubleshooting and updates
 
-```text
-Password API mismatch for user <username>
+- **FreshRSS login returns 401.** Confirm that API access is enabled, verify
+  the username, and use the API/GReader password from the user's FreshRSS profile.
+- **`/health` succeeds but feeds fail.** The health check verifies that rss-api
+  is running. Check whether the API container can reach `FRESHRSS_HOST` and
+  inspect warnings with `docker compose logs custom-api`.
+- **After editing `.env`.** Run `docker compose up -d` to apply the new settings.
+- **To update to the published image.** Run `docker compose pull` and
+  `docker compose up -d`. To build locally, replace the service's `image:`
+  line with `build: .` and run `docker compose up -d --build`.
+
+## Development and publishing
+
+```sh
+uv sync
+uv run pytest
 ```
 
-then `FRESHRSS_PASS` is probably set to the normal FreshRSS web login password.
+CI runs pytest and validates the Compose configuration on pull requests and
+pushes to `main`. Tests stub FreshRSS, so development and CI need no live
+FreshRSS instance.
 
-Fix it by creating or setting the FreshRSS API/GReader password in FreshRSS user
-settings, then update `.env`:
+The Docker workflow accepts only successful CI runs from pushes to this
+repository's `main`. It checks out the tested commit and publishes
+`ghcr.io/skulldorom/rss-api:<commit-sha>`. A rerun reuses an existing commit
+image. Publishing jobs run one at a time and check that the tested commit is
+still at the tip of `main` before updating `latest`. If `main` advances during
+the registry update, the workflow warns that `latest` may lag until the
+current tip passes CI and publishes.
 
-```dotenv
-FRESHRSS_PASS=<your-freshrss-api-password>
-```
-
-Restart the API container after changing `.env`.
-
-## Running with Docker Compose
-
-You can run the API using the pre-built image from GitHub Container Registry:
-
-```bash
-docker compose up
-```
-
-This uses the image `ghcr.io/skulldorom/rss-api:latest`.
-
-If you want to build locally, update `docker-compose.yml` to use `build: .` instead of the `image:` field.
-
-### Health check
-
-The container image defines a Docker `HEALTHCHECK` that calls `GET /health`.
-If you want to override it in `docker-compose.yml`, you can add a service-level `healthcheck` block.
-
-### How to update
-
-Go to the location where you ran git clone, `cd rss-api`
-
-```bash
-docker compose down
-git pull origin main
-docker compose up -d
-```
+If a branch rule requires the old workflow, verify the required check against
+the first pull request that shows the new **CI** workflow. The job name
+remains `test`. Update any rule that refers to the old workflow path or
+display name to use `.github/workflows/ci.yml` or **CI / test**, as applicable.
